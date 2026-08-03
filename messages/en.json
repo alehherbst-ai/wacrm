@@ -1493,7 +1493,28 @@
       "step4_3": "Paste the <strong class=\"text-foreground\">Webhook Callback URL</strong> from above",
       "step4_4": "Enter the same <strong class=\"text-foreground\">Verify Token</strong> you set here",
       "step4_5": "Subscribe to \"messages\" webhook field",
-      "metaDocs": "Meta WhatsApp API Documentation"
+      "metaDocs": "Meta WhatsApp API Documentation",
+      "providerMeta": "Meta (Official)",
+      "providerUazapi": "UAZAPI (QR Code)",
+      "uazapi": {
+        "title": "Unofficial WhatsApp (QR Code)",
+        "description": "Connect a regular WhatsApp number by scanning a QR code from your phone — no Meta Business approval needed. You can keep this connected alongside your Meta connection.",
+        "notConnected": "Not connected",
+        "connected": "Connected",
+        "connectedAs": "Connected as {name}",
+        "connect": "Connect via QR Code",
+        "connecting": "Starting connection...",
+        "waitingForScan": "Open WhatsApp on your phone → Linked Devices → Link a Device, then scan this code.",
+        "refreshQr": "Generate new QR code",
+        "expired": "This QR code expired.",
+        "disconnect": "Disconnect",
+        "disconnecting": "Disconnecting...",
+        "verifyConnection": "Verify / repair connection",
+        "limitationsTitle": "Limitations",
+        "limitationsDesc": "This connection doesn't support approved message templates or interactive button/list messages — those need the Meta connection.",
+        "connectError": "Could not start the connection. Try again.",
+        "statusError": "Could not check connection status."
+      }
     },
     "sections": {
       "overview": "Overview",

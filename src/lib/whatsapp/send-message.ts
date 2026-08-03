@@ -21,20 +21,18 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import {
-  sendTextMessage,
-  sendTemplateMessage,
-  sendMediaMessage,
-  sendInteractiveButtons,
-  sendInteractiveList,
-  type MediaKind,
-} from '@/lib/whatsapp/meta-api';
+import type { MediaKind } from '@/lib/whatsapp/meta-api';
 import {
   validateInteractivePayload,
   interactivePayloadPreviewText,
   type InteractiveMessagePayload,
 } from '@/lib/whatsapp/interactive';
-import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption';
+import {
+  resolveOutboundConnection,
+  WhatsAppNotConfiguredError,
+  AmbiguousConnectionError,
+} from '@/lib/whatsapp/providers/resolve';
+import { ProviderNotSupportedError } from '@/lib/whatsapp/providers/types';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import {
   sanitizePhoneForMeta,
@@ -84,12 +82,18 @@ export interface SendMessageParams {
   /** Structured payload for `messageType === 'interactive'`. */
   interactivePayload?: InteractiveMessagePayload | null;
   replyToMessageId?: string | null;
+  /**
+   * Explicit WhatsApp connection to send through. Only required when
+   * the account has more than one connection AND the conversation
+   * isn't already tied to one — see resolveOutboundConnection.
+   */
+  connectionId?: string;
 }
 
 export interface SendMessageResult {
   /** Our `messages.id` (the persisted row). */
   messageId: string;
-  /** Meta's `wamid` for the delivered message. */
+  /** The provider's own id for the delivered message (Meta's wamid, or UAZAPI's messageid). */
   whatsappMessageId: string;
 }
 
@@ -197,6 +201,7 @@ export async function sendMessageToConversation(
     templateMessageParams,
     interactivePayload,
     replyToMessageId,
+    connectionId,
   } = params;
 
   if (!conversationId) {
@@ -247,33 +252,53 @@ export async function sendMessageToConversation(
     );
   }
 
-  // WhatsApp config, account-scoped.
-  const { data: config, error: configError } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', accountId)
-    .single();
+  // WhatsApp connection — account-scoped, and pinned to this
+  // conversation's channel when it already has one (see
+  // resolveOutboundConnection for the full precedence).
+  let config: Awaited<ReturnType<typeof resolveOutboundConnection>>['config'];
+  let provider: Awaited<ReturnType<typeof resolveOutboundConnection>>['provider'];
+  try {
+    ({ config, provider } = await resolveOutboundConnection(db, accountId, {
+      conversationId,
+      connectionId: connectionId ?? undefined,
+    }));
+  } catch (err) {
+    if (err instanceof WhatsAppNotConfiguredError) {
+      throw new SendMessageError('whatsapp_not_configured', err.message, 400);
+    }
+    if (err instanceof AmbiguousConnectionError) {
+      throw new SendMessageError('ambiguous_connection', err.message, 400);
+    }
+    throw err;
+  }
 
-  if (configError || !config) {
+  if (messageType === 'template' && !provider.capabilities.templates) {
     throw new SendMessageError(
-      'whatsapp_not_configured',
-      'WhatsApp not configured. Please set up your WhatsApp integration first.',
+      'provider_not_supported',
+      'Message templates require a Meta connection.',
+      400
+    );
+  }
+  if (messageType === 'interactive' && !provider.capabilities.interactive) {
+    throw new SendMessageError(
+      'provider_not_supported',
+      'Interactive button/list messages require a Meta connection.',
       400
     );
   }
 
-  const accessToken = decrypt(config.access_token);
-
-  // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
-  if (isLegacyFormat(config.access_token)) {
+  // Pin the conversation to this connection if it isn't already, so a
+  // later inbound reply and any follow-up outbound send stay on the
+  // same channel. Best-effort — a failure here shouldn't block the send.
+  if (!conversation.whatsapp_config_id) {
     void db
-      .from('whatsapp_config')
-      .update({ access_token: encrypt(accessToken) })
-      .eq('id', config.id)
+      .from('conversations')
+      .update({ whatsapp_config_id: config.id })
+      .eq('id', conversationId)
       .then(({ error }: { error: { message: string } | null }) => {
         if (error) {
           console.warn(
-            '[send-message] access_token GCM upgrade failed:',
+            '[send-message] failed to pin conversation to connection:',
             error.message
           );
         }
@@ -331,9 +356,7 @@ export async function sendMessageToConversation(
 
   const attempt = async (phone: string): Promise<string> => {
     if (messageType === 'template') {
-      const result = await sendTemplateMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      const result = await provider.sendTemplate({
         to: phone,
         templateName: templateName!,
         language: templateLanguage || 'en_US',
@@ -345,9 +368,7 @@ export async function sendMessageToConversation(
       return result.messageId;
     }
     if (isMediaKind) {
-      const result = await sendMediaMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      const result = await provider.sendMedia({
         to: phone,
         kind: messageType as MediaKind,
         link: mediaUrl!,
@@ -360,9 +381,7 @@ export async function sendMessageToConversation(
     if (messageType === 'interactive') {
       const p = interactivePayload!;
       if (p.kind === 'buttons') {
-        const result = await sendInteractiveButtons({
-          phoneNumberId: config.phone_number_id,
-          accessToken,
+        const result = await provider.sendInteractiveButtons({
           to: phone,
           bodyText: p.body,
           headerText: p.header || undefined,
@@ -372,9 +391,7 @@ export async function sendMessageToConversation(
         });
         return result.messageId;
       }
-      const result = await sendInteractiveList({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      const result = await provider.sendInteractiveList({
         to: phone,
         bodyText: p.body,
         buttonLabel: p.button_label,
@@ -385,9 +402,7 @@ export async function sendMessageToConversation(
       });
       return result.messageId;
     }
-    const result = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
+    const result = await provider.sendText({
       to: phone,
       text: contentText!,
       contextMessageId,
@@ -395,9 +410,10 @@ export async function sendMessageToConversation(
     return result.messageId;
   };
 
-  // Send via Meta — retry across phone-number variants if Meta rejects
-  // with "recipient not in allowed list"; persist a working variant
-  // back to the contact so the next send goes straight through.
+  // Send via the resolved provider — retry across phone-number variants
+  // if it rejects with "recipient not in allowed list"; persist a
+  // working variant back to the contact so the next send goes straight
+  // through.
   let waMessageId = '';
   let workingPhone = sanitizedPhone;
   try {
@@ -424,10 +440,13 @@ export async function sendMessageToConversation(
 
     if (lastError) throw lastError;
   } catch (err) {
+    if (err instanceof ProviderNotSupportedError) {
+      throw new SendMessageError('provider_not_supported', err.message, 400);
+    }
     const message =
-      err instanceof Error ? err.message : 'Unknown Meta API error';
-    console.error('[send-message] Meta send failed for all variants:', message);
-    throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
+      err instanceof Error ? err.message : `Unknown ${provider.name} API error`;
+    console.error(`[send-message] ${provider.name} send failed for all variants:`, message);
+    throw new SendMessageError('provider_error', `${provider.name} API error: ${message}`, 502);
   }
 
   if (workingPhone !== sanitizedPhone) {
@@ -470,7 +489,7 @@ export async function sendMessageToConversation(
     console.error('[send-message] error inserting sent message:', msgError);
     throw new SendMessageError(
       'db_error',
-      `Message sent to Meta but failed to save to DB: ${msgError.message}`,
+      `Message sent via ${provider.name} but failed to save to DB: ${msgError.message}`,
       500
     );
   }

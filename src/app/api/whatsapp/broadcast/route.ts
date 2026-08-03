@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
-import { sendTemplateMessage } from '@/lib/whatsapp/meta-api'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import {
+  resolveOutboundConnection,
+  WhatsAppNotConfiguredError,
+  AmbiguousConnectionError,
+} from '@/lib/whatsapp/providers/resolve'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
 import {
@@ -89,6 +92,11 @@ export async function POST(request: Request) {
       template_name,
       template_language,
       template_params,
+      // Only needed when the account has both a Meta and a UAZAPI
+      // connection — broadcasts use approved templates, a Meta-only
+      // concept, so there's no per-recipient conversation to infer it
+      // from the way sendMessageToConversation does.
+      connection_id,
     } = body
 
     // Normalize to a list of {phone, params} regardless of shape.
@@ -120,23 +128,37 @@ export async function POST(request: Request) {
       )
     }
 
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
+    let resolved
+    try {
+      resolved = await resolveOutboundConnection(supabase, accountId, {
+        connectionId: connection_id ?? undefined,
+      })
+    } catch (err) {
+      if (err instanceof WhatsAppNotConfiguredError) {
+        return NextResponse.json({ error: err.message }, { status: 400 })
+      }
+      if (err instanceof AmbiguousConnectionError) {
+        return NextResponse.json(
+          {
+            error:
+              'This account has more than one WhatsApp connection — pass `connection_id` to pick which one to broadcast from.',
+          },
+          { status: 400 }
+        )
+      }
+      throw err
+    }
+    const { provider } = resolved
 
-    if (configError || !config) {
+    if (!provider.capabilities.templates) {
       return NextResponse.json(
         {
           error:
-            'WhatsApp not configured. Please set up your WhatsApp integration first.',
+            'Broadcasts use approved message templates, which require a Meta connection.',
         },
         { status: 400 }
       )
     }
-
-    const accessToken = decrypt(config.access_token)
 
     // Load the template row once so sendTemplateMessage can build
     // header + button components on each iteration. Loading inside
@@ -186,9 +208,7 @@ export async function POST(request: Request) {
 
       for (const variant of variants) {
         try {
-          const result = await sendTemplateMessage({
-            phoneNumberId: config.phone_number_id,
-            accessToken,
+          const result = await provider.sendTemplate({
             to: variant,
             templateName: template_name,
             language: template_language || 'en_US',

@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SettingsPanelHead } from './settings-panel-head';
+import { UazapiConnect } from './uazapi-connect';
 import {
   Accordion,
   AccordionItem,
@@ -393,6 +394,8 @@ export function WhatsAppConfig() {
         title={t("title")}
         description={t("description")}
       />
+
+      <h3 className="mb-3 text-sm font-semibold text-foreground">{t('providerMeta')}</h3>
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
       {/* Main config form */}
       <div className="space-y-6">
@@ -835,6 +838,9 @@ export function WhatsAppConfig() {
         </Card>
       </div>
     </div>
+
+      <h3 className="mb-3 mt-8 text-sm font-semibold text-foreground">{t('providerUazapi')}</h3>
+      <UazapiConnect />
     </section>
   );
 }

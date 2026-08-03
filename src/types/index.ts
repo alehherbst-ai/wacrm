@@ -266,15 +266,25 @@ export interface MessageReaction {
   created_at: string;
 }
 
+/**
+ * A WhatsApp connection row. An account may hold one 'meta' row and
+ * one 'uazapi' row simultaneously (see migration 037) — `provider`
+ * discriminates which shape applies. Meta-only and uazapi-only fields
+ * are optional rather than split into separate types because most
+ * call sites only care about `provider` + `status`.
+ */
 export interface WhatsAppConfig {
   id: string;
   user_id: string;
-  phone_number_id: string;
-  waba_id?: string;
-  access_token: string;
-  verify_token?: string;
+  provider: 'meta' | 'uazapi';
   status: 'connected' | 'disconnected';
   connected_at?: string;
+
+  // ---- Meta-only ----
+  phone_number_id?: string;
+  waba_id?: string;
+  access_token?: string;
+  verify_token?: string;
   /**
    * Set when POST /{phone_number_id}/register last succeeded. NULL
    * means the number was saved but never actually subscribed for
@@ -285,6 +295,10 @@ export interface WhatsAppConfig {
   subscribed_apps_at?: string;
   /** Last error from /register; cleared on success. */
   last_registration_error?: string;
+
+  // ---- UAZAPI-only ----
+  uazapi_instance_id?: string;
+  uazapi_instance_name?: string;
 }
 
 // Raw Meta status enum. We persist this verbatim from Meta (sync + webhook)

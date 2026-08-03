@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
-import { sendReactionMessage } from '@/lib/whatsapp/meta-api';
-import { decrypt } from '@/lib/whatsapp/encryption';
+import {
+  resolveOutboundConnection,
+  WhatsAppNotConfiguredError,
+  AmbiguousConnectionError,
+} from '@/lib/whatsapp/providers/resolve';
 import { sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils';
 import {
   checkRateLimit,
@@ -88,37 +91,37 @@ export async function POST(request: Request) {
       );
     }
 
-    // WhatsApp config + access token. Account-scoped post-multi-user.
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('phone_number_id, access_token')
-      .eq('account_id', accountId)
-      .single();
-
-    if (configError || !config) {
-      return NextResponse.json(
-        { error: 'WhatsApp not configured.' },
-        { status: 400 },
-      );
+    // WhatsApp connection, pinned to this conversation's channel when
+    // it already has one.
+    let provider;
+    try {
+      ({ provider } = await resolveOutboundConnection(supabase, accountId, {
+        conversationId: conversation.id,
+      }));
+    } catch (err) {
+      if (err instanceof WhatsAppNotConfiguredError) {
+        return NextResponse.json({ error: err.message }, { status: 400 });
+      }
+      if (err instanceof AmbiguousConnectionError) {
+        return NextResponse.json({ error: err.message }, { status: 400 });
+      }
+      throw err;
     }
 
-    const accessToken = decrypt(config.access_token);
     const sanitizedPhone = sanitizePhoneForMeta(contact.phone);
 
     try {
-      await sendReactionMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      await provider.sendReaction({
         to: sanitizedPhone,
         targetMessageId: targetMessage.message_id,
         emoji,
       });
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Unknown Meta API error';
-      console.error('[whatsapp/react] Meta send failed:', message);
+        err instanceof Error ? err.message : `Unknown ${provider.name} API error`;
+      console.error(`[whatsapp/react] ${provider.name} send failed:`, message);
       return NextResponse.json(
-        { error: `Meta API error: ${message}` },
+        { error: `${provider.name} API error: ${message}` },
         { status: 502 },
       );
     }
