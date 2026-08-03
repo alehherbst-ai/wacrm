@@ -1,0 +1,455 @@
+/**
+ * Provider-agnostic tail of inbound message processing.
+ *
+ * Both webhook endpoints (Meta's `/api/whatsapp/webhook` and UAZAPI's
+ * `/api/whatsapp/uazapi/webhook/[connectionId]/[secret]`) parse their
+ * own wire format into a `NormalizedInboundMessage`, then hand off to
+ * `processInboundMessage` here — find/create contact + conversation,
+ * insert the message, dispatch to flows/automations/AI-reply/outbound
+ * webhooks. This used to live entirely inside the Meta webhook route
+ * (`processMessage`); extracted so a second provider doesn't have to
+ * duplicate ~300 lines of fan-out logic.
+ */
+
+import { supabaseAdmin } from '@/lib/flows/admin-client';
+import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
+import { runAutomationsForTrigger } from '@/lib/automations/engine';
+import { dispatchInboundToFlows } from '@/lib/flows/engine';
+import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
+import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+
+export interface NormalizedInboundMessage {
+  /** Provider's own id for this message (Meta's wamid / UAZAPI's messageid). */
+  providerMessageId: string;
+  /** Sender's phone number — already normalized (digits, no provider suffix). */
+  senderPhone: string;
+  senderName: string;
+  /** When the message was sent, per the provider. */
+  timestamp: Date;
+  contentType:
+    | 'text'
+    | 'image'
+    | 'document'
+    | 'audio'
+    | 'video'
+    | 'location'
+    | 'interactive';
+  contentText: string | null;
+  mediaUrl: string | null;
+  interactiveReplyId: string | null;
+  /** Provider id of the message this one is replying to, if any. */
+  replyToProviderId: string | null;
+  /**
+   * Set only for reaction events. When present, every other
+   * content-shaped field above is ignored — reactions never create a
+   * `messages` row, they upsert `message_reactions`.
+   */
+  reaction: { targetProviderId: string; emoji: string } | null;
+}
+
+export interface InboundPipelineContext {
+  accountId: string;
+  /** Sender-of-record for inserts that need a NOT NULL user_id FK — the admin who saved the WhatsApp connection. */
+  configOwnerUserId: string;
+  /** Which whatsapp_config row received this — stamped onto the conversation so outbound replies stay on the same channel. */
+  whatsappConfigId: string;
+}
+
+const ALLOWED_CONTENT_TYPES = new Set([
+  'text',
+  'image',
+  'document',
+  'audio',
+  'video',
+  'location',
+  'template',
+  'interactive',
+]);
+
+export async function processInboundMessage(
+  message: NormalizedInboundMessage,
+  context: InboundPipelineContext
+): Promise<void> {
+  const { accountId, configOwnerUserId, whatsappConfigId } = context;
+
+  const contactOutcome = await findOrCreateContact(
+    accountId,
+    configOwnerUserId,
+    message.senderPhone,
+    message.senderName
+  );
+  if (!contactOutcome) return;
+  const contactRecord = contactOutcome.contact;
+
+  const convResult = await findOrCreateConversation(
+    accountId,
+    configOwnerUserId,
+    contactRecord.id,
+    whatsappConfigId
+  );
+  if (!convResult) return;
+  const conversation = convResult.conversation;
+
+  if (convResult.created) {
+    await dispatchWebhookEvent(supabaseAdmin(), accountId, 'conversation.created', {
+      conversation_id: conversation.id,
+      contact_id: contactRecord.id,
+    });
+  }
+
+  // Keep the conversation pinned to whichever connection most recently
+  // delivered an inbound message — a reply should go out on the same
+  // channel the customer just used, not wherever the thread started.
+  if (conversation.whatsapp_config_id !== whatsappConfigId) {
+    await supabaseAdmin()
+      .from('conversations')
+      .update({ whatsapp_config_id: whatsappConfigId })
+      .eq('id', conversation.id);
+  }
+
+  if (message.reaction) {
+    await handleReaction(message.reaction, conversation.id, contactRecord.id);
+    return;
+  }
+
+  let replyToInternalId: string | null = null;
+  if (message.replyToProviderId) {
+    replyToInternalId = await lookupInternalIdByProviderId(
+      message.replyToProviderId,
+      conversation.id
+    );
+    if (!replyToInternalId) {
+      console.warn(
+        '[inbound-pipeline] reply context parent not found:',
+        message.replyToProviderId
+      );
+    }
+  }
+
+  const contentType = ALLOWED_CONTENT_TYPES.has(message.contentType)
+    ? message.contentType
+    : 'text';
+
+  const { count: priorCustomerMsgCount } = await supabaseAdmin()
+    .from('messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('conversation_id', conversation.id)
+    .eq('sender_type', 'customer');
+  const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0;
+
+  const { error: msgError } = await supabaseAdmin().from('messages').insert({
+    conversation_id: conversation.id,
+    sender_type: 'customer',
+    content_type: contentType,
+    content_text: message.contentText,
+    media_url: message.mediaUrl,
+    message_id: message.providerMessageId,
+    status: 'delivered',
+    created_at: message.timestamp.toISOString(),
+    reply_to_message_id: replyToInternalId,
+    interactive_reply_id: message.interactiveReplyId,
+  });
+
+  if (msgError) {
+    console.error('[inbound-pipeline] error inserting message:', msgError);
+    return;
+  }
+
+  const { error: convError } = await supabaseAdmin()
+    .from('conversations')
+    .update({
+      last_message_text: message.contentText || `[${message.contentType}]`,
+      last_message_at: new Date().toISOString(),
+      unread_count: (conversation.unread_count || 0) + 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', conversation.id);
+
+  if (convError) {
+    console.error('[inbound-pipeline] error updating conversation:', convError);
+  }
+
+  await flagBroadcastReplyIfAny(accountId, contactRecord.id);
+
+  // Flow runner dispatch — see the equivalent comment in the (now
+  // Meta-only) webhook route for why content-level automation triggers
+  // are suppressed when the runner consumed the message.
+  const flowResult = await dispatchInboundToFlows({
+    accountId,
+    userId: configOwnerUserId,
+    contactId: contactRecord.id,
+    conversationId: conversation.id,
+    message: message.interactiveReplyId
+      ? {
+          kind: 'interactive_reply',
+          reply_id: message.interactiveReplyId,
+          reply_title: message.contentText ?? '',
+          meta_message_id: message.providerMessageId,
+        }
+      : {
+          kind: 'text',
+          text: message.contentText ?? '',
+          meta_message_id: message.providerMessageId,
+        },
+    isFirstInboundMessage,
+  });
+  const flowConsumed = flowResult.consumed;
+
+  const inboundText = message.contentText ?? '';
+  const automationTriggers: (
+    | 'new_contact_created'
+    | 'first_inbound_message'
+    | 'new_message_received'
+    | 'keyword_match'
+    | 'interactive_reply'
+  )[] = [];
+  if (!flowConsumed) {
+    automationTriggers.push('new_message_received', 'keyword_match');
+    if (message.interactiveReplyId) {
+      automationTriggers.push('interactive_reply');
+    }
+  }
+  if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created');
+  if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message');
+  for (const triggerType of automationTriggers) {
+    await runAutomationsForTrigger({
+      accountId,
+      triggerType,
+      contactId: contactRecord.id,
+      context: {
+        message_text: inboundText,
+        conversation_id: conversation.id,
+        interactive_reply_id: message.interactiveReplyId ?? undefined,
+      },
+    }).catch((err) => console.error('[automations] dispatch failed:', err));
+  }
+
+  if (!flowConsumed && !message.interactiveReplyId && inboundText.trim()) {
+    await dispatchInboundToAiReply({
+      accountId,
+      conversationId: conversation.id,
+      contactId: contactRecord.id,
+      configOwnerUserId,
+    });
+  }
+
+  await dispatchWebhookEvent(supabaseAdmin(), accountId, 'message.received', {
+    conversation_id: conversation.id,
+    contact_id: contactRecord.id,
+    whatsapp_message_id: message.providerMessageId,
+    content_type: contentType,
+    text: message.contentText,
+  });
+}
+
+/**
+ * If an inbound message's sender is on a still-unreplied
+ * broadcast_recipients row, flip it to `replied` so the reply count
+ * advances on the parent broadcast. Best-effort.
+ */
+async function flagBroadcastReplyIfAny(accountId: string, contactId: string) {
+  try {
+    const { data: recs, error } = await supabaseAdmin()
+      .from('broadcast_recipients')
+      .select('id, status, broadcast_id, broadcasts!inner(account_id)')
+      .eq('contact_id', contactId)
+      .eq('broadcasts.account_id', accountId)
+      .in('status', ['sent', 'delivered', 'read'])
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error || !recs || recs.length === 0) return;
+
+    const row = recs[0];
+    const { error: updErr } = await supabaseAdmin()
+      .from('broadcast_recipients')
+      .update({ status: 'replied', replied_at: new Date().toISOString() })
+      .eq('id', row.id);
+
+    if (updErr) {
+      console.error('[inbound-pipeline] error marking broadcast recipient replied:', updErr);
+    }
+  } catch (err) {
+    console.error('[inbound-pipeline] flagBroadcastReplyIfAny failed:', err);
+  }
+}
+
+/**
+ * Resolve a provider-side message id into the matching internal UUID,
+ * scoped to one conversation. Returns null when we never received the
+ * parent (e.g. a reply to a message older than this CRM install).
+ */
+async function lookupInternalIdByProviderId(
+  providerId: string,
+  conversationId: string
+): Promise<string | null> {
+  const { data, error } = await supabaseAdmin()
+    .from('messages')
+    .select('id')
+    .eq('message_id', providerId)
+    .eq('conversation_id', conversationId)
+    .maybeSingle();
+  if (error) {
+    console.error('[inbound-pipeline] lookupInternalIdByProviderId failed:', error.message);
+    return null;
+  }
+  return data?.id ?? null;
+}
+
+/**
+ * Persist an inbound reaction. Reactions are not new messages — they're
+ * per-(target, actor) state, upserted/deleted on `message_reactions`.
+ * A missing parent is logged and skipped, not fatal.
+ */
+async function handleReaction(
+  reaction: { targetProviderId: string; emoji: string },
+  conversationId: string,
+  contactId: string
+) {
+  const targetInternalId = await lookupInternalIdByProviderId(
+    reaction.targetProviderId,
+    conversationId
+  );
+  if (!targetInternalId) {
+    console.warn(
+      '[inbound-pipeline] reaction target message not found; skipping',
+      reaction.targetProviderId
+    );
+    return;
+  }
+
+  if (!reaction.emoji) {
+    const { error: delError } = await supabaseAdmin()
+      .from('message_reactions')
+      .delete()
+      .eq('message_id', targetInternalId)
+      .eq('actor_type', 'customer')
+      .eq('actor_id', contactId);
+    if (delError) {
+      console.error('[inbound-pipeline] reaction delete failed:', delError.message);
+    }
+    return;
+  }
+
+  const { error: upsertError } = await supabaseAdmin()
+    .from('message_reactions')
+    .upsert(
+      {
+        message_id: targetInternalId,
+        conversation_id: conversationId,
+        actor_type: 'customer',
+        actor_id: contactId,
+        emoji: reaction.emoji,
+      },
+      { onConflict: 'message_id,actor_type,actor_id' }
+    );
+  if (upsertError) {
+    console.error('[inbound-pipeline] reaction upsert failed:', upsertError.message);
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ContactRow = any;
+
+interface ContactOutcome {
+  contact: ContactRow;
+  wasCreated: boolean;
+}
+
+async function findOrCreateContact(
+  accountId: string,
+  configOwnerUserId: string,
+  phone: string,
+  name: string
+): Promise<ContactOutcome | null> {
+  const existingContact = await findExistingContact(supabaseAdmin(), accountId, phone);
+
+  if (existingContact) {
+    if (name && name !== existingContact.name) {
+      await supabaseAdmin()
+        .from('contacts')
+        .update({ name, updated_at: new Date().toISOString() })
+        .eq('id', existingContact.id);
+    }
+    return { contact: existingContact, wasCreated: false };
+  }
+
+  const { data: newContact, error: createError } = await supabaseAdmin()
+    .from('contacts')
+    .insert({
+      account_id: accountId,
+      user_id: configOwnerUserId,
+      phone,
+      name: name || phone,
+    })
+    .select()
+    .single();
+
+  if (createError) {
+    if (isUniqueViolation(createError)) {
+      const raced = await findExistingContact(supabaseAdmin(), accountId, phone);
+      if (raced) return { contact: raced, wasCreated: false };
+    }
+    console.error('[inbound-pipeline] error creating contact:', createError);
+    return null;
+  }
+
+  return { contact: newContact, wasCreated: true };
+}
+
+async function findOrCreateConversation(
+  accountId: string,
+  configOwnerUserId: string,
+  contactId: string,
+  whatsappConfigId: string
+) {
+  // Oldest-first, one row — see the equivalent comment in the pre-
+  // extraction webhook route (issue #363) for why `.single()` isn't
+  // used here.
+  const { data: existingRows, error: findError } = await supabaseAdmin()
+    .from('conversations')
+    .select('*')
+    .eq('account_id', accountId)
+    .eq('contact_id', contactId)
+    .order('created_at', { ascending: true })
+    .limit(1);
+
+  if (findError) {
+    console.error('[inbound-pipeline] error finding conversation:', findError);
+    return null;
+  }
+
+  if (existingRows && existingRows.length > 0) {
+    return { conversation: existingRows[0], created: false };
+  }
+
+  const { data: newConv, error: createError } = await supabaseAdmin()
+    .from('conversations')
+    .insert({
+      account_id: accountId,
+      user_id: configOwnerUserId,
+      contact_id: contactId,
+      whatsapp_config_id: whatsappConfigId,
+    })
+    .select()
+    .single();
+
+  if (createError) {
+    if (isUniqueViolation(createError)) {
+      const { data: raced } = await supabaseAdmin()
+        .from('conversations')
+        .select('*')
+        .eq('account_id', accountId)
+        .eq('contact_id', contactId)
+        .order('created_at', { ascending: true })
+        .limit(1);
+      if (raced && raced.length > 0) {
+        return { conversation: raced[0], created: false };
+      }
+    }
+    console.error('[inbound-pipeline] error creating conversation:', createError);
+    return null;
+  }
+
+  return { conversation: newConv, created: true };
+}

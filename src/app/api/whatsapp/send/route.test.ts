@@ -110,8 +110,19 @@ function makeSupabaseMock() {
     })
     b.single = vi.fn(terminal)
     b.maybeSingle = vi.fn(terminal)
-    b.then = (resolve: (v: unknown) => unknown) =>
-      resolve(didInsert ? insertResult() : selectResult())
+    // A bare `await` on the builder (no `.single()`/`.maybeSingle()`) is how
+    // resolveOutboundConnection (src/lib/whatsapp/providers/resolve.ts) reads
+    // whatsapp_config — real Supabase returns an ARRAY in that shape, unlike
+    // the single-object terminal() above. Model that distinction here so the
+    // mock doesn't hand back an object where the real client would hand back
+    // an array.
+    b.then = (resolve: (v: unknown) => unknown) => {
+      if (!didInsert && table === 'whatsapp_config') {
+        const { data, error } = selectResult()
+        return resolve({ data: data ? [data] : [], error })
+      }
+      return resolve(didInsert ? insertResult() : selectResult())
+    }
     return b
   }
 

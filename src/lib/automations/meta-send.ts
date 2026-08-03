@@ -1,10 +1,9 @@
-import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
 import {
   engineSendInteractiveButtons,
   engineSendInteractiveList,
 } from '@/lib/flows/meta-send'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { resolveOutboundConnection } from '@/lib/whatsapp/providers/resolve'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -14,7 +13,7 @@ import {
 import { supabaseAdmin } from './admin-client'
 
 // ------------------------------------------------------------
-// Automation-side Meta sender.
+// Automation-side sender.
 //
 // Mirrors the logic in src/app/api/whatsapp/send/route.ts but uses
 // the service-role client (engine has no cookies) and accepts the
@@ -22,6 +21,11 @@ import { supabaseAdmin } from './admin-client'
 // on hand. Kept here (rather than refactoring the user-facing send
 // route) to avoid risk to the working manual-send path — they can
 // converge in a later refactor.
+//
+// Sends through whichever connection resolveOutboundConnection picks
+// for the conversation — Meta or UAZAPI. `template` steps require a
+// Meta connection (UAZAPI has no template concept); the send throws a
+// clear error otherwise instead of silently no-op'ing.
 // ------------------------------------------------------------
 
 interface SendTextArgs {
@@ -131,22 +135,18 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', input.accountId)
-    .single()
-  if (configErr || !config) {
-    throw new Error('WhatsApp not configured for this account')
-  }
-
-  const accessToken = decrypt(config.access_token)
+  const { provider } = await resolveOutboundConnection(db, input.accountId, {
+    conversationId: input.conversationId,
+  })
 
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
-      const r = await sendTemplateMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      if (!provider.capabilities.templates) {
+        throw new Error(
+          `Message templates require a Meta connection (this conversation is on ${provider.name}).`
+        )
+      }
+      const r = await provider.sendTemplate({
         to: phone,
         templateName: input.templateName,
         language: input.language,
@@ -154,9 +154,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       })
       return r.messageId
     }
-    const r = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
+    const r = await provider.sendText({
       to: phone,
       text: input.text,
     })

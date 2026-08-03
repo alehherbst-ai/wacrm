@@ -1,14 +1,10 @@
-import {
-  sendInteractiveButtons,
-  sendInteractiveList,
-  sendMediaMessage,
-  sendTextMessage,
-  type InteractiveButton,
-  type InteractiveListSection,
-  type MediaKind,
+import type {
+  InteractiveButton,
+  InteractiveListSection,
+  MediaKind,
 } from '@/lib/whatsapp/meta-api'
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { resolveOutboundConnection } from '@/lib/whatsapp/providers/resolve'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -18,7 +14,7 @@ import {
 import { supabaseAdmin } from './admin-client'
 
 // ------------------------------------------------------------
-// Flows-side Meta sender (interactive variants).
+// Flows-side sender (interactive variants).
 //
 // Mirrors src/lib/automations/meta-send.ts (engineSendText /
 // engineSendTemplate) but emits interactive button + list messages.
@@ -27,9 +23,10 @@ import { supabaseAdmin } from './admin-client'
 // phone-variant retry + DB persistence are obvious extraction
 // candidates into a shared base.
 //
-// PR #1 ships this in isolation: callers don't exist yet. PR #2
-// brings the flow runner online and wires it up. Shipping it now
-// keeps the foundation PR self-contained and unit-testable.
+// Interactive buttons/lists require a Meta connection — UAZAPI has no
+// equivalent shape. engineSendInteractiveButtons/List throw a clear
+// error when the resolved connection is uazapi rather than silently
+// failing; author flows accordingly for UAZAPI-only accounts.
 // ------------------------------------------------------------
 
 interface SendTextEngineArgs {
@@ -82,21 +79,12 @@ export async function engineSendText(
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', args.accountId)
-    .single()
-  if (configErr || !config) {
-    throw new Error('WhatsApp not configured for this account')
-  }
-
-  const accessToken = decrypt(config.access_token)
+  const { provider } = await resolveOutboundConnection(db, args.accountId, {
+    conversationId: args.conversationId,
+  })
 
   const attempt = async (phone: string): Promise<string> => {
-    const r = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
+    const r = await provider.sendText({
       to: phone,
       text: args.text,
     })
@@ -192,21 +180,12 @@ export async function engineSendMedia(
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', args.accountId)
-    .single()
-  if (configErr || !config) {
-    throw new Error('WhatsApp not configured for this account')
-  }
-
-  const accessToken = decrypt(config.access_token)
+  const { provider } = await resolveOutboundConnection(db, args.accountId, {
+    conversationId: args.conversationId,
+  })
 
   const attempt = async (phone: string): Promise<string> => {
-    const r = await sendMediaMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
+    const r = await provider.sendMedia({
       to: phone,
       kind: args.kind,
       link: args.link,
@@ -344,22 +323,19 @@ async function sendInteractiveViaMeta(
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', input.accountId)
-    .single()
-  if (configErr || !config) {
-    throw new Error('WhatsApp not configured for this account')
-  }
+  const { provider } = await resolveOutboundConnection(db, input.accountId, {
+    conversationId: input.conversationId,
+  })
 
-  const accessToken = decrypt(config.access_token)
+  if (!provider.capabilities.interactive) {
+    throw new Error(
+      `Interactive button/list messages require a Meta connection (this conversation is on ${provider.name}).`
+    )
+  }
 
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'buttons') {
-      const r = await sendInteractiveButtons({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      const r = await provider.sendInteractiveButtons({
         to: phone,
         bodyText: input.bodyText,
         buttons: input.buttons,
@@ -368,9 +344,7 @@ async function sendInteractiveViaMeta(
       })
       return r.messageId
     }
-    const r = await sendInteractiveList({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
+    const r = await provider.sendInteractiveList({
       to: phone,
       bodyText: input.bodyText,
       buttonLabel: input.buttonLabel,
