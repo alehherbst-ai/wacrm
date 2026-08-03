@@ -182,6 +182,12 @@ export async function configureWebhook(args: ConfigureWebhookArgs): Promise<void
     headers: { 'Content-Type': 'application/json', token: instanceToken },
     body: JSON.stringify({
       url,
+      // UAZAPI's Webhook schema defaults `enabled` to false — omitting
+      // this field silently registers a *disabled* webhook (the request
+      // succeeds with a 200, so there's no error to catch). Confirmed
+      // against a live instance: URL + secret were both correct, but no
+      // events ever arrived because `enabled` was never sent as `true`.
+      enabled: true,
       events: events ?? ['messages'],
       excludeMessages: ['wasSentByApi'],
     }),
