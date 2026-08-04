@@ -6,6 +6,16 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-04] Aplicação estava apenas em inglês (e coreano) — sem português
+
+**Antes:** o app só tinha dois dicionários de idioma (`messages/en.json` e `messages/ko.json`); não existia nenhuma tradução em português. `NEXT_PUBLIC_APP_LOCALE` (que define qual dicionário carrega — não é um seletor de idioma por usuário, é uma configuração única de toda a aplicação, ver `src/i18n/request.ts`) estava em `en`.
+
+**Depois:** novo `messages/pt-BR.json` com tradução completa de toda chave existente em `en.json` (paridade 100%, verificada automaticamente por `src/i18n/messages.test.ts`, que agora cobre `ko` e `pt-BR`). `en.json` e `ko.json` não foram tocados — a mudança é só aditiva. `NEXT_PUBLIC_APP_LOCALE=pt-BR` virou o padrão documentado em `.env.local.example` e já setado no `.env.local` local.
+
+**Resolvido:** atende ao pedido do usuário de ter o projeto inteiro em português. Importante: isso muda o `.env.local` **local**; o ambiente de produção (hPanel da Hostinger ou equivalente) precisa da mesma variável setada separadamente — não é algo que o deploy do código sozinho resolve.
+
+Arquivos: `messages/pt-BR.json`, `src/i18n/messages.test.ts`, `.env.local.example`
+
 ## [2026-08-04] Mensagens de grupo do WhatsApp apareciam como chats individuais separados
 
 **Antes:** o sistema não tinha nenhum conceito de "grupo do WhatsApp" — em nenhuma tabela (`contacts`, `conversations`, `messages`) nem no código. Toda mensagem recebida era atribuída a quem apareceu como "remetente" no payload da UAZAPI (`sender`), que numa mensagem de grupo é a pessoa que escreveu, não o grupo (`chatid`). Resultado: cada pessoa que escrevia num grupo virava um contato e uma conversa separados no Inbox — reportado pelo usuário com um caso real (mensagens do "Leo" e do "Gustavo Menezes", que na verdade estavam no mesmo grupo, aparecendo como dois chats individuais).
