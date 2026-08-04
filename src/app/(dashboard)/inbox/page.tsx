@@ -391,6 +391,32 @@ function InboxPageInner() {
   }, []);
 
   /**
+   * Low-frequency safety-net resync while the tab is in the foreground.
+   *
+   * The reconnect and visibilitychange resyncs above only fire on events
+   * we can observe. A WebSocket can also go *silently* stale — the
+   * socket stays open (so no reconnect fires) and the tab stays visible
+   * (so no visibility event fires), but events stop being delivered:
+   * a dropped frame behind a corporate proxy, an idle NAT mapping timing
+   * out, a Realtime worker restart mid-publish. Nothing in the client
+   * notices, and the inbox just quietly stops updating until the agent
+   * reloads — which is exactly what "the inbox isn't live" looks like.
+   *
+   * A 30s poll bounds that worst case without meaningfully adding load
+   * (one indexed conversations SELECT per open tab). Paused when the tab
+   * is hidden so background tabs cost nothing; coming back to the
+   * foreground already triggers its own resync above.
+   */
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        setResyncToken((n) => n + 1);
+      }
+    }, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /**
    * Manual refresh trigger for the thread-header refresh button.
    * Bumps the same resyncToken the reconnect / visibility paths use,
    * so it goes through the existing dedupe & refetch plumbing — no
@@ -502,6 +528,20 @@ function InboxPageInner() {
   }, [router]);
 
 
+  /**
+   * Mirror a successful "clear inbox" locally. The server write already
+   * happened inside ConversationList; this just zeroes the badges now
+   * rather than waiting on one realtime UPDATE per cleared thread.
+   */
+  const handleMarkAllRead = useCallback(() => {
+    setConversations((prev) =>
+      prev.map((c) => (c.unread_count > 0 ? { ...c, unread_count: 0 } : c)),
+    );
+    setActiveConversation((prev) =>
+      prev && prev.unread_count > 0 ? { ...prev, unread_count: 0 } : prev,
+    );
+  }, []);
+
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {
     setMessages(loaded);
   }, []);
@@ -590,6 +630,7 @@ function InboxPageInner() {
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
+            onMarkAllRead={handleMarkAllRead}
           />
         </div>
 

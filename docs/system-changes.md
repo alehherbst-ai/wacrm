@@ -6,6 +6,23 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-04] Inbox parecia não atualizar em tempo real; sem forma de limpar não lidas; nome do CRM
+
+**Antes:**
+- **Tempo real:** a lista de conversas era ordenada apenas no `SELECT` inicial (`.order("last_message_at")`). Quando uma mensagem nova chegava, o evento de realtime atualizava `last_message_at`, a prévia e o badge **no lugar** (via `.map()`), mas nunca mexia na posição do item no array. Numa conta com mais de uma tela de conversas (o caso do usuário, com 8+), a conversa que recebeu a mensagem continuava enterrada na mesma posição — o que na prática se lê como "a caixa de entrada não é ao vivo". Além disso, o cliente só ressincronizava em eventos observáveis (reconexão do WebSocket, aba voltando ao foco); um WebSocket que morre em silêncio (proxy corporativo derrubando frames, NAT expirando, worker do Realtime reiniciando) deixava o inbox parado até um reload manual.
+- **Não lidas:** não existia nenhuma forma de zerar as não lidas em massa — só abrindo conversa por conversa.
+- **Nome:** o app se chamava "Modelo de CRM para WhatsApp" (`Sidebar.title`) e "wacrm" (título da aba/metadata).
+
+**Depois:**
+- A ordenação passou a acontecer na renderização (memo `filtered` em `conversation-list.tsx`), então toda atualização de realtime reordena a lista como o usuário espera. Foi adicionado também um resync periódico de 30s, pausado quando a aba está em segundo plano, como rede de segurança para o caso do WebSocket ficar mudo sem emitir evento de desconexão.
+- Novo botão **"Limpar caixa"** na barra de filtros do inbox: zera `unread_count` de todas as conversas não lidas numa única query. O escopo por conta é garantido pelo próprio RLS (`conversations_update` → `is_account_member(account_id, 'agent')`), e o botão só aparece para quem tem permissão de escrita (agente ou acima) e quando existe algo para limpar. Limpa **todas** as não lidas de propósito, ignorando os filtros de busca/tag ativos — um "limpar caixa" que deixasse conversas não lidas escondidas atrás de um filtro esquecido seria pior que não ter o botão.
+- Renomeado para **"Uniko CRM"** nos três dicionários (`pt-BR`, `en`, `ko`), no `metadata` do `layout.tsx` (título da aba) e na tela de cadastro.
+
+**Resolvido:** atende aos três pedidos do usuário na mesma leva. Diagnóstico registrado: o backend de realtime foi verificado e **estava correto** — testes diretos com service role e com um token de usuário autenticado real receberam eventos de `messages` e `conversations` normalmente, então publicação, WAL e RLS não eram o problema; a falha era puramente de apresentação no cliente.
+
+Arquivos: `src/components/inbox/conversation-list.tsx`, `src/app/(dashboard)/inbox/page.tsx`,
+`src/app/layout.tsx`, `src/app/(auth)/signup/page.tsx`, `messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-04] Aplicação estava apenas em inglês (e coreano) — sem português
 
 **Antes:** o app só tinha dois dicionários de idioma (`messages/en.json` e `messages/ko.json`); não existia nenhuma tradução em português. `NEXT_PUBLIC_APP_LOCALE` (que define qual dicionário carrega — não é um seletor de idioma por usuário, é uma configuração única de toda a aplicação, ver `src/i18n/request.ts`) estava em `en`.

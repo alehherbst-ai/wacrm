@@ -9,9 +9,11 @@ import {
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X, Users } from "lucide-react";
+import { Search, ChevronDown, X, Users, CheckCheck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/use-auth";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -34,6 +36,12 @@ interface ConversationListProps {
    * or the tab was throttled. Optional so existing callers keep working.
    */
   resyncToken?: number;
+  /**
+   * Called after "clear inbox" successfully zeroes every unread count
+   * server-side, so the parent can mirror it in state immediately
+   * instead of waiting for N realtime UPDATEs to round-trip.
+   */
+  onMarkAllRead?: () => void;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -52,8 +60,14 @@ export function ConversationList({
   conversations,
   onConversationsLoaded,
   resyncToken = 0,
+  onMarkAllRead,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
+  // Clearing the inbox is a write to `conversations`, which the
+  // `conversations_update` RLS policy (migration 017) gates on the
+  // 'agent' role — the same gate `canSendMessages` encodes. Viewers
+  // don't get the button rather than getting one that always fails.
+  const { canSendMessages } = useAuth();
   
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
     { label: t("filterAll"), value: "all" },
@@ -66,6 +80,7 @@ export function ConversationList({
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [loading, setLoading] = useState(true);
+  const [clearingInbox, setClearingInbox] = useState(false);
   // Contact-based filters (issue #272). Tags use OR logic (a conversation
   // matches if its contact carries any selected tag), consistent with
   // Broadcast audience filtering. Company is an exact match on the field.
@@ -187,7 +202,24 @@ export function ConversationList({
       });
     }
 
-    return result;
+    // Sort newest-first HERE rather than relying on the server's
+    // `.order("last_message_at")`. That ordering only describes the array
+    // as it was fetched; realtime updates patch `last_message_at` in
+    // place (see handleMessageEvent in the inbox page), which changes the
+    // value but never the array position. A conversation sitting 8th in
+    // the list would receive a message and stay 8th — the preview text
+    // and unread badge updated, but the row never moved, which reads as
+    // "the inbox isn't live" on any account with more than a screenful
+    // of conversations. Sorting on render makes every realtime patch
+    // reorder the list the way the user expects.
+    return [...result].sort((a, b) => {
+      const at = a.last_message_at ?? a.created_at;
+      const bt = b.last_message_at ?? b.created_at;
+      if (!at && !bt) return 0;
+      if (!at) return 1;
+      if (!bt) return -1;
+      return new Date(bt).getTime() - new Date(at).getTime();
+    });
   }, [conversations, filter, search, selectedTagIds, selectedCompany]);
 
   const toggleTag = useCallback((id: string) => {
@@ -216,6 +248,52 @@ export function ConversationList({
     },
     [onSelect]
   );
+
+  // How many threads still carry unread messages — drives whether the
+  // "clear inbox" affordance is worth showing at all.
+  const unreadConversations = useMemo(
+    () => conversations.filter((c) => c.unread_count > 0).length,
+    [conversations],
+  );
+
+  /**
+   * Mark every unread conversation as read in one shot.
+   *
+   * The `.gt("unread_count", 0)` filter is what scopes the statement to
+   * rows worth touching; tenancy is enforced by RLS (`conversations_update`
+   * → `is_account_member(account_id, 'agent')`), so this can never reach
+   * another account's rows even though no account_id filter appears here.
+   * Deliberately clears ALL unread threads, not just the ones passing the
+   * current search/tag filters — "clear inbox" that silently left rows
+   * unread behind a filter the user forgot was active would be worse than
+   * useless.
+   */
+  const handleClearInbox = useCallback(async () => {
+    setClearingInbox(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("conversations")
+        .update({ unread_count: 0 })
+        .gt("unread_count", 0);
+
+      if (error) {
+        console.error("Failed to clear inbox:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        });
+        toast.error(t("clearInboxError"));
+        return;
+      }
+
+      onMarkAllRead?.();
+      toast.success(t("clearInboxDone", { count: unreadConversations }));
+    } finally {
+      setClearingInbox(false);
+    }
+  }, [onMarkAllRead, t, unreadConversations]);
 
   const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
 
@@ -349,6 +427,26 @@ export function ConversationList({
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+          )}
+
+          {/* Clear inbox — marks every unread thread as read. `ml-auto`
+              pushes it to the far right of the filter row so it reads as
+              an action rather than another filter. Only shown when there
+              is something to clear and the role is allowed to write. */}
+          {canSendMessages && unreadConversations > 0 && (
+            <button
+              onClick={handleClearInbox}
+              disabled={clearingInbox}
+              title={t("clearInbox")}
+              className="ml-auto inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+            >
+              {clearingInbox ? (
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              ) : (
+                <CheckCheck className="h-3.5 w-3.5" />
+              )}
+              <span className="hidden sm:inline">{t("clearInbox")}</span>
+            </button>
           )}
         </div>
 

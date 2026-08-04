@@ -15,7 +15,7 @@
     "createAccount": "Criar conta"
   },
   "Sidebar": {
-    "title": "Modelo de CRM para WhatsApp",
+    "title": "Uniko CRM",
     "dashboard": "Painel",
     "inbox": "Caixa de entrada",
     "notifications": "Notificações",
@@ -142,7 +142,10 @@
       "clearAll": "Limpar tudo",
       "noConversations": "Nenhuma conversa encontrada",
       "noMessagesYet": "Nenhuma mensagem ainda",
-      "unknown": "Desconhecido"
+      "unknown": "Desconhecido",
+      "clearInbox": "Limpar caixa",
+      "clearInboxDone": "{count} {count, plural, =1 {conversa marcada} other {conversas marcadas}} como lida",
+      "clearInboxError": "Não foi possível limpar a caixa de entrada"
     },
     "messageThread": {
       "backToConversations": "Voltar para conversas",

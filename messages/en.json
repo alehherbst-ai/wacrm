@@ -15,7 +15,7 @@
     "createAccount": "Create account"
   },
   "Sidebar": {
-    "title": "CRM Template for WhatsApp",
+    "title": "Uniko CRM",
     "dashboard": "Dashboard",
     "inbox": "Inbox",
     "notifications": "Notifications",
@@ -142,7 +142,10 @@
       "clearAll": "Clear all",
       "noConversations": "No conversations found",
       "noMessagesYet": "No messages yet",
-      "unknown": "Unknown"
+      "unknown": "Unknown",
+      "clearInbox": "Clear inbox",
+      "clearInboxDone": "{count} {count, plural, =1 {conversation} other {conversations}} marked as read",
+      "clearInboxError": "Couldn't clear the inbox"
     },
     "messageThread": {
       "backToConversations": "Back to conversations",
