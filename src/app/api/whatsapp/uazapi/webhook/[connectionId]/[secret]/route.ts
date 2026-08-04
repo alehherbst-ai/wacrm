@@ -69,13 +69,9 @@ function jidToPhone(jid: string | undefined): string | null {
 
 /**
  * A group message's `chatid` is the group's own JID (e.g.
- * `120363123456789012@g.us`); `sender` is the individual member who
- * posted. Routing must key on `chatid` for groups — using `sender`
- * would fragment one group thread into one fake 1:1 chat per member
- * who ever posted in it. `isGroup` is the primary signal; the
+ * `120363123456789012@g.us`). `isGroup` is the primary signal; the
  * `@g.us` suffix check is a defensive fallback in case a delivery
- * omits it (the field isn't confirmed against a live payload — see
- * the file-level comment).
+ * omits it.
  */
 function isGroupMessage(msg: UazapiMessage): boolean {
   return msg.isGroup === true || Boolean(msg.chatid?.endsWith('@g.us'));
@@ -83,13 +79,36 @@ function isGroupMessage(msg: UazapiMessage): boolean {
 
 function toNormalizedMessage(msg: UazapiMessage): NormalizedInboundMessage | null {
   const isGroup = isGroupMessage(msg);
-  const senderPhone = isGroup
-    ? jidToPhone(msg.chatid)
-    : jidToPhone(msg.sender) ?? jidToPhone(msg.chatid);
+
+  // Identity ALWAYS comes from `chatid`, never from `sender`.
+  //
+  // `chatid` is the conversation's own JID: the group for a group chat,
+  // and the counterparty's phone JID (`5548…@s.whatsapp.net`) for a 1:1.
+  // `sender` is *who typed*, and WhatsApp increasingly reports that as a
+  // LID (`135622383648774@lid`) — an opaque per-contact identifier, NOT
+  // a phone number. Keying 1:1 contacts off `sender` stored those LIDs
+  // in `contacts.phone`, and every reply then failed with UAZAPI's
+  // "no LID found for <lid>@s.whatsapp.net from server" because we were
+  // asking the server to deliver to an id it only accepts under the
+  // `@lid` domain.
+  //
+  // A LID chatid would be equally unusable as a phone, so it's rejected
+  // outright rather than silently persisted as a bad number.
+  if (msg.chatid?.includes('@lid')) {
+    console.warn(
+      '[uazapi-webhook] dropping message whose chatid is a LID, not a phone:',
+      msg.chatid
+    );
+    return null;
+  }
+
+  const senderPhone = jidToPhone(msg.chatid);
   if (!senderPhone || !msg.messageid) return null;
 
   const timestamp = msg.messageTimestamp ? new Date(msg.messageTimestamp) : new Date();
   const senderName = msg.senderName || senderPhone;
+  // In a group, `senderName` names the participant who wrote; in a 1:1
+  // it names the counterparty, who is already the contact.
   const senderDisplayName = isGroup ? msg.senderName || null : null;
 
   // A reaction event carries the target message id in `reaction` and

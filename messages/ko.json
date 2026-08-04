@@ -233,7 +233,14 @@
       "deals": "딜",
       "noTags": "태그 없음",
       "noDeals": "딜 없음",
-      "addNotePlaceholder": "메모 추가..."
+      "addNotePlaceholder": "메모 추가...",
+      "addTag": "태그 추가",
+      "removeTag": "태그 제거",
+      "noTagsAvailable": "태그가 없습니다. 설정 → 필드 및 태그에서 만드세요.",
+      "tagUpdateError": "태그를 업데이트할 수 없습니다.",
+      "newDeal": "새 거래",
+      "newDealInPipeline": "파이프라인에 거래 만들기",
+      "noPipelines": "파이프라인이 없습니다. 파이프라인에서 만드세요."
     },
     "aiBanner": {
       "pausedTitle": "이 대화에서 AI 어시스턴트가 일시 중지됨",

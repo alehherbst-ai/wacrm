@@ -1,25 +1,42 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { cn } from "@/lib/utils";
-import type { Contact, Deal, ContactNote, Tag } from "@/types";
+import { addContactTag, deleteContactTag } from "@/lib/contacts/tag-api";
+import type {
+  Contact,
+  Deal,
+  ContactNote,
+  Tag,
+  Pipeline,
+  PipelineStage,
+} from "@/types";
 import {
   Phone,
   Mail,
   Copy,
   Check,
-  User,
   Tag as TagIcon,
   DollarSign,
   StickyNote,
   Plus,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { DealForm } from "@/components/pipelines/deal-form";
 import { format } from "date-fns";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -29,13 +46,25 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
 
-  const { accountId } = useAuth();
+  const { accountId, canSendMessages } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [notes, setNotes] = useState<ContactNote[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+
+  // All tags on the account — the picker's source. Loaded once, not per
+  // contact, so opening the menu is instant.
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [pendingTagId, setPendingTagId] = useState<string | null>(null);
+
+  // Pipelines + stages drive the "new deal" flow: the sidebar has to ask
+  // WHICH pipeline (a contact can hold deals in several), which the board's
+  // DealForm never needs to since it's already scoped to one.
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [stages, setStages] = useState<PipelineStage[]>([]);
+  const [dealPipelineId, setDealPipelineId] = useState<string | null>(null);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -46,7 +75,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     const [dealsRes, notesRes, tagsRes] = await Promise.all([
       supabase
         .from("deals")
-        .select("*, stage:pipeline_stages(*)")
+        .select("*, stage:pipeline_stages(*), pipeline:pipelines(id, name)")
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: false }),
       supabase
@@ -80,6 +109,27 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     fetchContactData();
   }, [fetchContactData]);
 
+  // Account-wide reference data (tags, pipelines, stages) — independent of
+  // which contact is selected, so it loads once.
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    (async () => {
+      const [tagsRes, pipesRes, stagesRes] = await Promise.all([
+        supabase.from("tags").select("*").order("name"),
+        supabase.from("pipelines").select("*").order("name"),
+        supabase.from("pipeline_stages").select("*").order("position"),
+      ]);
+      if (cancelled) return;
+      setAllTags((tagsRes.data as Tag[]) ?? []);
+      setPipelines((pipesRes.data as Pipeline[]) ?? []);
+      setStages((stagesRes.data as PipelineStage[]) ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleCopyPhone = useCallback(async () => {
     if (!contact?.phone) return;
     await navigator.clipboard.writeText(contact.phone);
@@ -89,6 +139,47 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     // React Compiler's inference agrees with the manual dep list —
     // fixes the `preserve-manual-memoization` lint error.
   }, [contact]);
+
+  const tagIdsOnContact = useMemo(
+    () => new Set(tags.map((t) => t.id)),
+    [tags],
+  );
+
+  /**
+   * Add or remove a tag on the open conversation's contact.
+   *
+   * Goes through the API route (not a direct table write) because
+   * `POST /api/contacts/[id]/tags` also fires the `tag_added` automation
+   * trigger — tagging from the inbox has to behave exactly like tagging
+   * from the Contacts page, or automations would silently miss the ones
+   * applied mid-conversation.
+   */
+  const handleToggleTag = useCallback(
+    async (tag: Tag) => {
+      if (!contact) return;
+      const isOn = tagIdsOnContact.has(tag.id);
+      setPendingTagId(tag.id);
+      try {
+        if (isOn) {
+          await deleteContactTag(contact.id, tag.id);
+          setTags((prev) => prev.filter((t) => t.id !== tag.id));
+        } else {
+          await addContactTag(contact.id, tag.id);
+          // The row id is only needed as a React key; the refetch below
+          // replaces this optimistic entry with the real one.
+          setTags((prev) => [...prev, { ...tag, contact_tag_id: `tmp-${tag.id}` }]);
+          void fetchContactData();
+        }
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : tSidebar("tagUpdateError"),
+        );
+      } finally {
+        setPendingTagId(null);
+      }
+    },
+    [contact, tagIdsOnContact, fetchContactData, tSidebar],
+  );
 
   const handleAddNote = useCallback(async () => {
     if (!contact || !newNote.trim()) return;
@@ -118,6 +209,11 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     }
     setAddingNote(false);
   }, [contact, newNote, accountId]);
+
+  const stagesForDealPipeline = useMemo(
+    () => stages.filter((s) => s.pipeline_id === dealPipelineId),
+    [stages, dealPipelineId],
+  );
 
   if (!contact) {
     return (
@@ -183,9 +279,61 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
           {/* Tags */}
           <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <TagIcon className="h-3 w-3" />
-              {tSidebar("tags")}
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <TagIcon className="h-3 w-3" />
+                {tSidebar("tags")}
+              </div>
+              {canSendMessages && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    title={tSidebar("addTag")}
+                    className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="max-h-64 w-56 overflow-y-auto border-border bg-popover"
+                  >
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                      {tSidebar("addTag")}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {allTags.length === 0 ? (
+                      <div className="px-2 py-3 text-xs text-muted-foreground">
+                        {tSidebar("noTagsAvailable")}
+                      </div>
+                    ) : (
+                      allTags.map((tag) => {
+                        const active = tagIdsOnContact.has(tag.id);
+                        return (
+                          <DropdownMenuItem
+                            key={tag.id}
+                            disabled={pendingTagId === tag.id}
+                            onSelect={(e) => {
+                              // Keep the menu open so several tags can be
+                              // applied in one go.
+                              e.preventDefault();
+                              void handleToggleTag(tag);
+                            }}
+                            className="text-sm text-popover-foreground"
+                          >
+                            <span className="flex flex-1 items-center gap-2">
+                              <span
+                                className="h-2 w-2 shrink-0 rounded-full"
+                                style={{ backgroundColor: tag.color }}
+                              />
+                              <span className="truncate">{tag.name}</span>
+                            </span>
+                            {active && <Check className="h-3.5 w-3.5 text-primary" />}
+                          </DropdownMenuItem>
+                        );
+                      })
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
             <div className="mt-2 flex flex-wrap gap-1">
               {tags.length === 0 ? (
@@ -194,13 +342,23 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                 tags.map((tag) => (
                   <span
                     key={tag.contact_tag_id}
-                    className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                    className="group inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
                     style={{
                       backgroundColor: `${tag.color}20`,
                       color: tag.color,
                     }}
                   >
                     {tag.name}
+                    {canSendMessages && (
+                      <button
+                        onClick={() => void handleToggleTag(tag)}
+                        disabled={pendingTagId === tag.id}
+                        title={tSidebar("removeTag")}
+                        className="opacity-60 hover:opacity-100 disabled:opacity-30"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    )}
                   </span>
                 ))
               )}
@@ -210,11 +368,50 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           {/* Divider */}
           <div className="my-4 border-t border-border" />
 
-          {/* Active Deals */}
+          {/* Deals */}
           <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <DollarSign className="h-3 w-3" />
-              {tSidebar("deals")}
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <DollarSign className="h-3 w-3" />
+                {tSidebar("deals")}
+              </div>
+              {canSendMessages && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    title={tSidebar("newDeal")}
+                    className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="max-h-64 w-56 overflow-y-auto border-border bg-popover"
+                  >
+                    {/* Which pipeline the new deal belongs to. A contact
+                        can hold deals in several at once, so this is a
+                        real choice, not a default. */}
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                      {tSidebar("newDealInPipeline")}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {pipelines.length === 0 ? (
+                      <div className="px-2 py-3 text-xs text-muted-foreground">
+                        {tSidebar("noPipelines")}
+                      </div>
+                    ) : (
+                      pipelines.map((p) => (
+                        <DropdownMenuItem
+                          key={p.id}
+                          onClick={() => setDealPipelineId(p.id)}
+                          className="text-sm text-popover-foreground"
+                        >
+                          <span className="truncate">{p.name}</span>
+                        </DropdownMenuItem>
+                      ))
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
             <div className="mt-2 space-y-2">
               {deals.length === 0 ? (
@@ -245,6 +442,13 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                         </span>
                       )}
                     </div>
+                    {/* Which pipeline this deal sits in — only meaningful
+                        once a contact has deals in more than one. */}
+                    {deal.pipeline?.name && (
+                      <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                        {deal.pipeline.name}
+                      </p>
+                    )}
                   </div>
                 ))
               )}
@@ -298,6 +502,24 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           </div>
         </div>
       </ScrollArea>
+
+      {/* New-deal sheet. Mounted only once a pipeline is picked so its
+          `stages` prop is never an empty list. */}
+      {dealPipelineId && (
+        <DealForm
+          open
+          onOpenChange={(next) => {
+            if (!next) setDealPipelineId(null);
+          }}
+          pipelineId={dealPipelineId}
+          stages={stagesForDealPipeline}
+          defaultContactId={contact.id}
+          onSaved={() => {
+            setDealPipelineId(null);
+            void fetchContactData();
+          }}
+        />
+      )}
     </div>
   );
 }

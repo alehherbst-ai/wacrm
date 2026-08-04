@@ -41,6 +41,14 @@ interface DealFormProps {
   pipelineId: string;
   stages: PipelineStage[];
   defaultStageId?: string;
+  /**
+   * Preselects the contact on a NEW deal. Set by callers that already
+   * know who the deal is for — the inbox sidebar creates deals from
+   * inside a conversation, where asking the user to re-pick the contact
+   * they're already talking to would be busywork. Ignored when editing
+   * an existing deal, which carries its own contact.
+   */
+  defaultContactId?: string;
   onSaved: () => void;
 }
 
@@ -51,6 +59,7 @@ export function DealForm({
   pipelineId,
   stages,
   defaultStageId,
+  defaultContactId,
   onSaved,
 }: DealFormProps) {
   const t = useTranslations("Pipelines.form");
@@ -98,13 +107,13 @@ export function DealForm({
       setTitle("");
       setValue("");
       setCurrency(defaultCurrency);
-      setContactId("");
+      setContactId(defaultContactId ?? "");
       setStageId(defaultStageId || stages[0]?.id || "");
       setAssignedTo("");
       setExpectedCloseDate("");
       setNotes("");
     }
-  }, [open, deal, defaultStageId, stages, defaultCurrency]);
+  }, [open, deal, defaultStageId, defaultContactId, stages, defaultCurrency]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Load supporting data once the sheet is open

@@ -233,7 +233,14 @@
       "deals": "Deals",
       "noTags": "No tags",
       "noDeals": "No deals",
-      "addNotePlaceholder": "Add a note..."
+      "addNotePlaceholder": "Add a note...",
+      "addTag": "Add tag",
+      "removeTag": "Remove tag",
+      "noTagsAvailable": "No tags yet. Create them in Settings → Fields & tags.",
+      "tagUpdateError": "Couldn't update tags.",
+      "newDeal": "New deal",
+      "newDealInPipeline": "Create deal in pipeline",
+      "noPipelines": "No pipelines yet. Create one in Pipelines."
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",

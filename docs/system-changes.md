@@ -6,6 +6,27 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-04] Envio quebrado por LID gravado como telefone; Tags e Negócios não editáveis na conversa
+
+**Antes:**
+- **Envio quebrado.** Responder qualquer conversa falhava com `UAZAPI error: no LID found for <número>@s.whatsapp.net from server`. A causa: o normalizador do webhook usava `msg.sender` como identidade do contato em conversas 1:1. O WhatsApp hoje reporta o remetente como um **LID** (`135622383648774@lid`) — um identificador opaco por contato, **não** um telefone. Ou seja, o CRM gravava LIDs em `contacts.phone` e depois pedia à UAZAPI para entregar num id que ela só aceita no domínio `@lid`. Diagnóstico no banco: **nenhum** dos contatos individuais tinha telefone real (todos com 14–17 dígitos; brasileiros têm 12–13).
+- **Tags e Negócios só de leitura.** O painel lateral da conversa listava tags e negócios mas não deixava criar nem selecionar nada — para marcar uma tag era preciso sair para a tela de Contatos.
+
+**Depois:**
+- A identidade agora vem **sempre do `chatid`**, nunca do `sender`. Confirmado contra o histórico real da UAZAPI: numa mensagem recebida, `chatid = 554896274914@s.whatsapp.net` (o telefone de verdade) enquanto `sender = 135622383648774@lid`. Mensagens cujo `chatid` seja um LID passam a ser descartadas com log, em vez de virarem um contato com telefone inválido.
+- Contato afetado no print foi reparado em produção (`135622383648774` → `554896274914`), mapeando LID→telefone pelo histórico da própria UAZAPI.
+- **Tags editáveis na conversa:** botão "+" abre um seletor com as tags da conta; clicar alterna (marca/desmarca) e o menu fica aberto para aplicar várias de uma vez. Cada tag ganhou um "x" para remoção direta. Passa pela rota `/api/contacts/[id]/tags` — e não por escrita direta na tabela — porque é ela que dispara o gatilho de automação `tag_added`; marcar pela conversa precisa se comportar igual a marcar pela tela de Contatos.
+- **Negócios criáveis na conversa:** botão "+" abre a escolha do **funil** e então o formulário de negócio já existente (`DealForm`), com o contato pré-selecionado (nova prop `defaultContactId`). Um contato pode ter vários negócios, em funis diferentes — por isso o funil é uma escolha explícita, e cada negócio na lista agora mostra a qual funil pertence.
+- Ambos os controles só aparecem para quem tem permissão de escrita (agente ou acima).
+
+**Resolvido:** os dois problemas reportados nos prints. Verificação: typecheck limpo, lint 0 erros, 502 testes passando.
+
+**Pendência conhecida:** 27 contatos individuais antigos ainda têm LID no lugar do telefone. São resíduo do período anterior ao suporte a grupos, quando cada participante de grupo virava um falso contato 1:1 — e o telefone real deles não é recuperável pelo histórico (o `chatid` daquelas mensagens era o grupo). Enviar para eles vai continuar falhando. Decidir com o usuário se apaga ou deixa.
+
+Arquivos: `src/app/api/whatsapp/uazapi/webhook/[connectionId]/[secret]/route.ts`,
+`src/components/inbox/contact-sidebar.tsx`, `src/components/pipelines/deal-form.tsx`,
+`src/types/index.ts`, `messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-04] Sistema reestruturado para 100% UAZAPI — API Oficial da Meta removida
 
 > **MARCO.** Para resgatar a arquitetura anterior (dois provedores convivendo):

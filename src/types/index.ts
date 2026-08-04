@@ -344,6 +344,10 @@ export interface Deal {
   updated_at?: string;
   contact?: Contact;
   stage?: PipelineStage;
+  /** Hydrated by queries that embed `pipeline:pipelines(...)` — the inbox
+   *  sidebar shows it so a contact's deals in different pipelines are
+   *  told apart at a glance. Absent otherwise. */
+  pipeline?: Pick<Pipeline, 'id' | 'name'>;
   assignee?: Profile;
 }
 

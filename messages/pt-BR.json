@@ -233,7 +233,14 @@
       "deals": "Negócios",
       "noTags": "Nenhuma tag",
       "noDeals": "Nenhum negócio",
-      "addNotePlaceholder": "Adicionar uma nota..."
+      "addNotePlaceholder": "Adicionar uma nota...",
+      "addTag": "Adicionar tag",
+      "removeTag": "Remover tag",
+      "noTagsAvailable": "Nenhuma tag criada ainda. Crie em Configurações → Campos e tags.",
+      "tagUpdateError": "Não foi possível atualizar as tags.",
+      "newDeal": "Novo negócio",
+      "newDealInPipeline": "Criar negócio no funil",
+      "noPipelines": "Nenhum funil criado ainda. Crie um em Funis."
     },
     "aiBanner": {
       "pausedTitle": "O assistente de IA está pausado aqui",
