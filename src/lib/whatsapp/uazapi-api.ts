@@ -300,6 +300,58 @@ export async function getGroupInfo(args: GetGroupInfoArgs): Promise<GroupInfo> {
 }
 
 // ============================================================
+// Profile pictures
+// ============================================================
+
+export interface GetProfilePictureArgs {
+  instanceToken: string;
+  /** Phone digits for a person, or the full `…@g.us` JID for a group. */
+  number: string;
+}
+
+/**
+ * Fetch a contact's or group's WhatsApp profile picture URL.
+ *
+ * `/chat/details` serves both — pass a bare phone for a person and the
+ * group JID for a group — and returns the picture in two sizes:
+ * `image` (original) with `preview: false`, `imagePreview` (96×96) with
+ * `preview: true`. We ask for the original: it is still only tens of
+ * kilobytes, and the conversation sidebar renders larger than a preview
+ * would survive.
+ *
+ * Returns null when the contact has no picture or hides it under
+ * WhatsApp's privacy settings — a normal outcome, not an error. Only a
+ * genuine transport/API failure throws.
+ *
+ * The URL it returns is short-lived: it points at `pps.whatsapp.net`
+ * with a signed `oe=` expiry about ten days out. Callers must copy the
+ * bytes somewhere durable rather than persisting the link (see
+ * `contact-avatar.ts`).
+ */
+export async function getProfilePictureUrl(
+  args: GetProfilePictureArgs
+): Promise<string | null> {
+  const { instanceToken, number } = args;
+  const response = await fetch(`${requireBaseUrl()}/chat/details`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', token: instanceToken },
+    body: JSON.stringify({ number, preview: false }),
+    // This runs inline with inbound message processing, so it is
+    // bounded rather than left to the platform default: a hung lookup
+    // must never hold up the message that triggered it.
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    await throwUazapiError(response, `UAZAPI error: ${response.status}`);
+  }
+  const data = (await response.json()) as {
+    image?: string;
+    imagePreview?: string;
+  };
+  return data.image || data.imagePreview || null;
+}
+
+// ============================================================
 // Inbound media
 // ============================================================
 

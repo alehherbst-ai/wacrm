@@ -17,6 +17,7 @@ import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+import { shouldSyncAvatar, syncContactAvatar } from '@/lib/whatsapp/contact-avatar';
 
 export interface NormalizedInboundMessage {
   /** Provider's own id for this message (Meta's wamid / UAZAPI's messageid). */
@@ -74,6 +75,15 @@ export interface InboundPipelineContext {
    * message processing.
    */
   resolveGroupName?: () => Promise<string | null>;
+  /**
+   * Best-effort WhatsApp profile-picture lookup for the sender, called
+   * only when the contact has no recently-synced picture (see
+   * `shouldSyncAvatar`) — never on every message. Like
+   * `resolveGroupName`, the provider-specific route supplies it because
+   * that's where the instance token lives. Returning null means "no
+   * picture", which is a normal outcome for contacts who hide theirs.
+   */
+  resolveProfilePictureUrl?: () => Promise<string | null>;
 }
 
 const ALLOWED_CONTENT_TYPES = new Set([
@@ -91,7 +101,13 @@ export async function processInboundMessage(
   message: NormalizedInboundMessage,
   context: InboundPipelineContext
 ): Promise<void> {
-  const { accountId, configOwnerUserId, whatsappConfigId, resolveGroupName } = context;
+  const {
+    accountId,
+    configOwnerUserId,
+    whatsappConfigId,
+    resolveGroupName,
+    resolveProfilePictureUrl,
+  } = context;
 
   const contactOutcome = await findOrCreateContact(
     accountId,
@@ -103,6 +119,21 @@ export async function processInboundMessage(
   );
   if (!contactOutcome) return;
   const contactRecord = contactOutcome.contact;
+
+  // Import the WhatsApp profile picture BEFORE the message lands. The
+  // inbox re-reads the conversation (contact embedded) when realtime
+  // announces the new message, so syncing first is what makes the photo
+  // appear along with that first message instead of on the next reload.
+  // Both provider calls are timeout-bounded and the whole thing
+  // swallows its own errors, so it can neither stall nor drop a message.
+  if (resolveProfilePictureUrl && shouldSyncAvatar(contactRecord)) {
+    await syncContactAvatar({
+      db: supabaseAdmin(),
+      accountId,
+      contactId: contactRecord.id,
+      resolveSourceUrl: resolveProfilePictureUrl,
+    });
+  }
 
   const convResult = await findOrCreateConversation(
     accountId,

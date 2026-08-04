@@ -6,6 +6,36 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-04] Fotos de perfil de contatos e grupos importadas automaticamente
+
+> **Requer migration.** `supabase/migrations/039_contact_avatars.sql` precisa ser
+> aplicada no Supabase. Sem ela a coluna `avatar_synced_at` não existe e a
+> importação falha (com log, sem derrubar a mensagem) a cada mensagem recebida.
+
+**Antes:** contatos e grupos apareciam no inbox só com a inicial do nome ou um ícone genérico. A coluna `contacts.avatar_url` já existia e já era renderizada nos dois lugares (lista de conversas e painel do contato), mas **nada nunca a preenchia** — todos os 36 contatos estavam com ela vazia.
+
+**Depois:** na primeira mensagem que um contato ou grupo envia, a foto de perfil do WhatsApp é importada.
+
+- Novo `getProfilePictureUrl` (`uazapi-api.ts`) consulta `POST /chat/details`, que atende os dois casos — telefone puro para pessoa, JID completo (`…@g.us`) para grupo. Não são intercambiáveis, e é por isso que o webhook monta o número conforme o tipo.
+- **A foto é copiada para o Supabase Storage, não linkada.** A UAZAPI devolve uma URL assinada em `pps.whatsapp.net` com parâmetro `oe=` de expiração: no teste real veio `oe=6A7F52A1`, que decodifica para 2026-08-14 — **dez dias**. Guardar esse link exibiria tudo certo hoje e quebraria todos os avatares na semana seguinte. Novo bucket `contact-avatars` (migration 039), separado do `chat-media` porque o ciclo de vida é outro: um objeto atual por contato, sobrescrito quando a foto muda, contra anexos imutáveis que ficam enquanto a conversa existir.
+- O caminho no bucket é determinístico (`account-<id>/contact-<id>.<ext>`) com `upsert`. Um nome com timestamp deixaria a foto antiga órfã a cada atualização, sem nada apontando para ela para limpar depois. Como a URL então nunca muda, ela leva `?v=<timestamp>` para o navegador não continuar servindo a foto velha.
+- **Nova coluna `contacts.avatar_synced_at`**, que registra a *tentativa* — algo que `avatar_url` sozinha não consegue expressar. Um contato que esconde a foto por privacidade legitimamente nunca terá URL, e checar pela URL faria o sistema reperguntar ao provedor em **toda** mensagem que ele mandasse, para sempre. É carimbada mesmo em falha.
+- A foto é reconsultada quando passa de 7 dias. Sem isso a primeira foto ficaria congelada para sempre e quem trocasse de foto continuaria com a antiga pelo resto da vida do CRM.
+- A importação roda **antes** de a mensagem ser gravada, porque o inbox relê a conversa (com o contato embutido) quando o realtime anuncia a mensagem nova — sincronizar antes é o que faz a foto aparecer junto com a primeira mensagem, e não só no próximo carregamento. Para isso não atrasar nada, as duas chamadas de rede têm timeout explícito (10s e 15s) e a função engole os próprios erros: avatar é enfeite, não pode derrubar mensagem.
+
+**Resolvido:** contatos e grupos passam a exibir a foto real do WhatsApp.
+
+**Verificação:** `/chat/details` testado contra a instância real — retornou foto para um grupo (60 KB) e para uma pessoa (6 KB), ambas baixáveis. A parte de armazenamento foi validada separadamente: upsert no caminho determinístico mantém exatamente 1 objeto na pasta (sem órfãos), leitura pública anônima responde 200, e o bucket rejeita tipo fora da lista (`text/plain` recusado). Build limpo, typecheck limpo, lint 0 erros, 507 testes passando (as 5 falhas de fuso/ICU são pré-existentes).
+
+**Observações operacionais:**
+- O bucket `contact-avatars` foi criado via API durante a verificação, com as mesmas configurações da migration. A migration é idempotente (`ON CONFLICT DO UPDATE`) e ao rodar apenas reconcilia o bucket e adiciona as políticas de RLS.
+- Durante os testes o token da instância UAZAPI **expirou** (401 em `/instance/status`). O `UAZAPI_BASE_URL` aponta para um **servidor público de demonstração** — `/instance/all` responde "This is a public demo server. This endpoint has been disabled." Instâncias de demo expiram; enquanto isso a conexão fica fora e nenhuma mensagem chega. Reconectar pelo QR Code resolve na hora, mas vai voltar a acontecer até migrar para um servidor UAZAPI próprio ou pago.
+
+Arquivos: `supabase/migrations/039_contact_avatars.sql` (novo),
+`src/lib/whatsapp/contact-avatar.ts` (novo), `src/lib/whatsapp/contact-avatar.test.ts` (novo),
+`src/lib/whatsapp/uazapi-api.ts`, `src/lib/whatsapp/inbound-pipeline.ts`,
+`src/app/api/whatsapp/uazapi/webhook/[connectionId]/[secret]/route.ts`, `src/types/index.ts`
+
 ## [2026-08-04] Menu lateral recolhível
 
 **Antes:** o menu lateral ocupava 240px fixos em qualquer tela, sem como recolher. No inbox, que já divide o que sobra em três colunas (lista de conversas, thread, painel do contato), isso apertava especialmente a leitura das mensagens.

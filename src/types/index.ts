@@ -108,6 +108,13 @@ export interface Contact {
   email?: string;
   company?: string;
   avatar_url?: string;
+  /**
+   * When the WhatsApp profile picture was last FETCHED — not when it
+   * last changed (migration 039). Stamped even when the contact turns
+   * out to have no picture, so someone who hides theirs isn't
+   * re-queried on every message. Absent/null = never attempted.
+   */
+  avatar_synced_at?: string | null;
   created_at: string;
   updated_at: string;
   /** Hydrated by queries that embed `contact_tags(tags(*))` (e.g. the

@@ -3,7 +3,11 @@ import crypto from 'crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
-import { getGroupInfo, downloadMessageMedia } from '@/lib/whatsapp/uazapi-api';
+import {
+  getGroupInfo,
+  downloadMessageMedia,
+  getProfilePictureUrl,
+} from '@/lib/whatsapp/uazapi-api';
 import { persistInboundMedia } from '@/lib/whatsapp/inbound-media';
 import {
   processInboundMessage,
@@ -320,6 +324,17 @@ export async function POST(
                   return info.name;
                 }
               : undefined,
+          // `/chat/details` takes the group's full JID but a person's
+          // bare phone digits, so the two cases are not interchangeable.
+          resolveProfilePictureUrl: async () => {
+            const instanceToken = decrypt(config.uazapi_instance_token);
+            return getProfilePictureUrl({
+              instanceToken,
+              number: normalized.isGroup
+                ? `${normalized.senderPhone}@g.us`
+                : normalized.senderPhone,
+            });
+          },
         });
       } catch (error) {
         console.error('[uazapi-webhook] error processing message:', error);
