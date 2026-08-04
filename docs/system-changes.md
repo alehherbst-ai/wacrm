@@ -6,6 +6,23 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-04] Menu lateral recolhido por padrão, expandindo ao passar o mouse
+
+**Antes:** o menu lateral vinha aberto por padrão e recolher era uma escolha manual — quem quisesse o espaço extra precisava recolher e depois expandir toda vez que quisesse navegar.
+
+**Depois:** o menu já começa recolhido (faixa de ícones de 64px) e se abre por inteiro assim que o mouse passa por cima, voltando a recolher quando o mouse sai. O botão do cabeçalho continua existindo, mas agora significa **fixar aberto**: quem prefere o menu sempre visível fixa uma vez e a preferência é lembrada.
+
+- **A expansão sobrepõe a página, não a empurra.** Um espaçador invisível segura os 64px na linha do layout e o menu passou a ser posicionado por cima dele. Se a expansão redimensionasse o conteúdo, cada passada de mouse rearranjaria a tela inteira — no inbox isso significaria as três colunas pulando de lugar toda vez que o ponteiro cruzasse a lateral. Uma sombra aparece só enquanto ele está flutuando, para ficar claro que está por cima; fixado aberto, ele fica rente ao layout e a sombra some.
+- Só a aparência responde ao hover; o espaço reservado continua respondendo à preferência fixada. É essa separação que faz a sobreposição funcionar.
+- **Também abre ao receber foco por teclado.** Sem isso, navegar por Tab entraria em links cujos rótulos estão escondidos.
+- **Fica aberto enquanto o menu do usuário está aberto.** O menu suspenso é renderizado fora da barra, então abri-lo conta como "o mouse saiu" — sem esse cuidado a barra fechava no instante em que a pessoa fosse clicar em "Sair".
+- Como o padrão passou a ser recolhido, a preferência salva agora só é consultada para o caso contrário: apenas um "fixar aberto" explícito abre a barra no carregamento.
+
+**Resolvido:** o pedido de recolher por padrão e mostrar por completo no hover. Verificação: build limpo, typecheck limpo, lint 0 erros, teste de paridade de i18n passando.
+
+Arquivos: `src/components/layout/sidebar.tsx`, `src/app/(dashboard)/dashboard-shell.tsx`,
+`messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-04] Fotos de perfil de contatos e grupos importadas automaticamente
 
 > **Requer migration.** `supabase/migrations/039_contact_avatars.sql` precisa ser

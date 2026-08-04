@@ -27,16 +27,21 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   // dense screens (the inbox's three columns above all) get the width
   // back. Ignored below lg, where the sidebar is a drawer instead.
   //
+  // Collapsed is the DEFAULT — the rail expands on hover, so the full
+  // menu is a mouse-move away and the page keeps the width the rest of
+  // the time. Only an explicit "false" (the user pinned it open with
+  // the header toggle) overrides that, which is why this tests against
+  // "false" rather than for "true".
+  //
   // Reading localStorage in the initializer is safe here despite SSR:
   // `loading` starts true, so the first render on both server and
   // client is the spinner below — this value reaches no markup until
   // after hydration. That also means the rail never paints expanded
   // first and then snaps closed.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true",
-  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) !== "false";
+  });
 
   const toggleSidebarCollapsed = useCallback(() => {
     setSidebarCollapsed((prev) => {
