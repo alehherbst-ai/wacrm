@@ -6,6 +6,22 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-04] Menu lateral recolhível
+
+**Antes:** o menu lateral ocupava 240px fixos em qualquer tela, sem como recolher. No inbox, que já divide o que sobra em três colunas (lista de conversas, thread, painel do contato), isso apertava especialmente a leitura das mensagens.
+
+**Depois:**
+- Botão no cabeçalho (ao lado do título da página) alterna entre menu completo e uma faixa de ícones de 64px. A largura é animada, e o conteúdo da página se expande junto porque ocupa o espaço restante do flex.
+- A preferência é gravada em `localStorage` e lida no inicializador do estado — não num efeito. Isso é seguro apesar do SSR porque o primeiro render (servidor e cliente) é o spinner da verificação de sessão: o valor não alcança nenhuma marcação antes da hidratação. Consequência prática: a faixa nunca pinta expandida para depois fechar de repente.
+- **Recolher é exclusivo do desktop.** Todo estilo que o estado dirige tem prefixo `lg:`, então o drawer no celular sempre abre completo — mesmo que a preferência tenha sido marcada antes numa tela larga. O botão também só aparece a partir de `lg`, já que abaixo disso o hambúrguer existente cobre a mesma necessidade.
+- Recolhido, cada linha vira só o ícone, com o rótulo exposto no `title` e no `aria-label` (sem eles a linha ficaria sem nome acessível). Os contadores de não lidos, que não cabem em 64px, condensam num ponto no canto do ícone.
+- A coluna de conteúdo ganhou `min-w-0`. Sem isso um filho flex trava na largura intrínseca do conteúdo, e o espaço devolvido pela faixa alargaria a página em vez do conteúdo.
+
+**Resolvido:** o pedido de recolher o menu e redimensionar o restante. Verificação: build limpo, typecheck limpo, lint 0 erros, teste de paridade de i18n passando, 502 testes passando (as 5 falhas de fuso/ICU são pré-existentes e não têm relação).
+
+Arquivos: `src/app/(dashboard)/dashboard-shell.tsx`, `src/components/layout/sidebar.tsx`,
+`src/components/layout/header.tsx`, `messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-04] Imagens e áudios recebidos não apareciam no inbox
 
 **Antes:** toda mídia recebida pelo WhatsApp sumia — nem imagem, nem áudio, nem figurinha apareciam na conversa. Duas causas empilhadas:

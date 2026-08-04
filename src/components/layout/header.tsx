@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
+import {
+  LogOut,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings as SettingsIcon,
+  User,
+} from "lucide-react";
 import {
   Avatar,
   AvatarFallback,
@@ -40,11 +47,19 @@ interface HeaderProps {
   /** Wired to the shell's drawer state. Used only on mobile — the
    *  hamburger button is hidden on lg+. */
   onOpenSidebar?: () => void;
+  /** Desktop rail state, for the toggle's icon and label. */
+  sidebarCollapsed?: boolean;
+  /** Wired to the shell's rail state. Desktop only. */
+  onToggleSidebarCollapsed?: () => void;
 }
 
 import { useTranslations } from "next-intl";
 
-export function Header({ onOpenSidebar }: HeaderProps) {
+export function Header({
+  onOpenSidebar,
+  sidebarCollapsed = false,
+  onToggleSidebarCollapsed,
+}: HeaderProps) {
   const t = useTranslations("Header");
   const pathname = usePathname();
   const { profile, signOut } = useAuth();
@@ -66,6 +81,22 @@ export function Header({ onOpenSidebar }: HeaderProps) {
           className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
         >
           <Menu className="h-5 w-5" />
+        </button>
+        {/* Rail toggle — desktop only, since below lg the sidebar is a
+            drawer and the hamburger above already covers it. */}
+        <button
+          type="button"
+          onClick={onToggleSidebarCollapsed}
+          aria-label={t(sidebarCollapsed ? "expandSidebar" : "collapseSidebar")}
+          title={t(sidebarCollapsed ? "expandSidebar" : "collapseSidebar")}
+          aria-expanded={!sidebarCollapsed}
+          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:flex"
+        >
+          {sidebarCollapsed ? (
+            <PanelLeftOpen className="h-5 w-5" />
+          ) : (
+            <PanelLeftClose className="h-5 w-5" />
+          )}
         </button>
         <h1 className="truncate text-base font-semibold text-foreground sm:text-lg">
           {t(titleKey as string)}

@@ -48,6 +48,8 @@
     "automations": "Automações",
     "settings": "Configurações",
     "openMenu": "Abrir menu",
+    "collapseSidebar": "Recolher menu lateral",
+    "expandSidebar": "Expandir menu lateral",
     "openAccountMenu": "Abrir menu da conta",
     "defaultUser": "Usuário",
     "defaultAvatar": "Avatar",
