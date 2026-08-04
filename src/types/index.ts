@@ -113,6 +113,13 @@ export interface Contact {
   /** Hydrated by queries that embed `contact_tags(tags(*))` (e.g. the
    *  Inbox conversation list, for tag filtering). Absent otherwise. */
   tags?: Tag[];
+  /**
+   * True when this "contact" is a WhatsApp group, not a person —
+   * `phone` holds the group's JID digits (migration 038). Inbound
+   * routing for groups uses an exact match on `phone_normalized`
+   * instead of the fuzzy last-8-digit dedupe real phone numbers get.
+   */
+  is_group?: boolean;
 }
 
 export interface Tag {
@@ -231,6 +238,14 @@ export interface Message {
   status: MessageStatus;
   created_at: string;
   reply_to_message_id?: string;
+  /**
+   * Which WhatsApp group participant sent this message — set only for
+   * inbound messages in a group conversation (migration 038); null for
+   * 1:1 chats (the contact's own name already answers that) and for
+   * outbound messages. This is the only per-message way to tell group
+   * members apart, since every member's messages share one conversation.
+   */
+  sender_display_name?: string | null;
   /**
    * Only set when `content_type === 'interactive'` — the stable id of
    * the button or list row the customer tapped. The Flows engine uses

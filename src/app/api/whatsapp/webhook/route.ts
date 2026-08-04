@@ -468,6 +468,9 @@ async function normalizeMetaMessage(
       reaction: message.reaction?.message_id
         ? { targetProviderId: message.reaction.message_id, emoji: message.reaction.emoji || '' }
         : null,
+      // Meta's Cloud API has no group concept — always false/null here.
+      isGroup: false,
+      senderDisplayName: null,
     }
   }
 
@@ -506,6 +509,8 @@ async function normalizeMetaMessage(
     interactiveReplyId,
     replyToProviderId: message.context?.id ?? null,
     reaction: null,
+    isGroup: false,
+    senderDisplayName: null,
   }
 }
 

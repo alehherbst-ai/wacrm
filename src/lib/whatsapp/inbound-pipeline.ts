@@ -45,6 +45,18 @@ export interface NormalizedInboundMessage {
    * `messages` row, they upsert `message_reactions`.
    */
   reaction: { targetProviderId: string; emoji: string } | null;
+  /**
+   * True when this message came from a WhatsApp group rather than a
+   * 1:1 chat. Meta's Cloud API has no group concept — its normalizer
+   * always sets this false. UAZAPI-backed sessions do have real
+   * groups; when true, `senderPhone`/`senderName` identify the GROUP
+   * (so every member's messages land in one conversation), and
+   * `senderDisplayName` identifies which member sent this particular
+   * message.
+   */
+  isGroup: boolean;
+  /** Which group participant sent this message. Null outside groups. */
+  senderDisplayName: string | null;
 }
 
 export interface InboundPipelineContext {
@@ -53,6 +65,15 @@ export interface InboundPipelineContext {
   configOwnerUserId: string;
   /** Which whatsapp_config row received this — stamped onto the conversation so outbound replies stay on the same channel. */
   whatsappConfigId: string;
+  /**
+   * Best-effort group-name lookup, called ONLY when a brand-new group
+   * contact needs to be created (never on every message) — the
+   * provider-specific webhook route supplies this (it's the only
+   * place with the instance token the lookup call needs). Returning
+   * null (or throwing) falls back to a generic name; never blocks
+   * message processing.
+   */
+  resolveGroupName?: () => Promise<string | null>;
 }
 
 const ALLOWED_CONTENT_TYPES = new Set([
@@ -70,13 +91,15 @@ export async function processInboundMessage(
   message: NormalizedInboundMessage,
   context: InboundPipelineContext
 ): Promise<void> {
-  const { accountId, configOwnerUserId, whatsappConfigId } = context;
+  const { accountId, configOwnerUserId, whatsappConfigId, resolveGroupName } = context;
 
   const contactOutcome = await findOrCreateContact(
     accountId,
     configOwnerUserId,
     message.senderPhone,
-    message.senderName
+    message.senderName,
+    message.isGroup,
+    resolveGroupName
   );
   if (!contactOutcome) return;
   const contactRecord = contactOutcome.contact;
@@ -148,6 +171,7 @@ export async function processInboundMessage(
     created_at: message.timestamp.toISOString(),
     reply_to_message_id: replyToInternalId,
     interactive_reply_id: message.interactiveReplyId,
+    sender_display_name: message.isGroup ? message.senderDisplayName : null,
   });
 
   if (msgError) {
@@ -155,10 +179,18 @@ export async function processInboundMessage(
     return;
   }
 
+  // Group threads preview like WhatsApp itself does — "Author: text" —
+  // since the conversation title is the group, not the actual sender.
+  const bodyPreview = message.contentText || `[${message.contentType}]`;
+  const lastMessageText =
+    message.isGroup && message.senderDisplayName
+      ? `${message.senderDisplayName}: ${bodyPreview}`
+      : bodyPreview;
+
   const { error: convError } = await supabaseAdmin()
     .from('conversations')
     .update({
-      last_message_text: message.contentText || `[${message.contentType}]`,
+      last_message_text: lastMessageText,
       last_message_at: new Date().toISOString(),
       unread_count: (conversation.unread_count || 0) + 1,
       updated_at: new Date().toISOString(),
@@ -360,8 +392,14 @@ async function findOrCreateContact(
   accountId: string,
   configOwnerUserId: string,
   phone: string,
-  name: string
+  name: string,
+  isGroup = false,
+  resolveGroupName?: () => Promise<string | null>
 ): Promise<ContactOutcome | null> {
+  if (isGroup) {
+    return findOrCreateGroupContact(accountId, configOwnerUserId, phone, resolveGroupName);
+  }
+
   const existingContact = await findExistingContact(supabaseAdmin(), accountId, phone);
 
   if (existingContact) {
@@ -391,6 +429,79 @@ async function findOrCreateContact(
       if (raced) return { contact: raced, wasCreated: false };
     }
     console.error('[inbound-pipeline] error creating contact:', createError);
+    return null;
+  }
+
+  return { contact: newContact, wasCreated: true };
+}
+
+/**
+ * Group variant of findOrCreateContact — deliberately NOT sharing
+ * findExistingContact's fuzzy last-8-digit matching (migration 038's
+ * rationale): a WhatsApp group id has no phone-formatting ambiguity to
+ * tolerate, and fuzzy-matching an 18-20 digit synthetic id risks
+ * merging unrelated groups/contacts that happen to share a suffix.
+ * Exact match on `phone_normalized` only.
+ */
+async function findOrCreateGroupContact(
+  accountId: string,
+  configOwnerUserId: string,
+  groupPhone: string,
+  resolveGroupName?: () => Promise<string | null>
+): Promise<ContactOutcome | null> {
+  const { data: existing, error: findError } = await supabaseAdmin()
+    .from('contacts')
+    .select('*')
+    .eq('account_id', accountId)
+    .eq('phone_normalized', groupPhone)
+    .eq('is_group', true)
+    .maybeSingle();
+
+  if (findError) {
+    console.error('[inbound-pipeline] error finding group contact:', findError);
+    return null;
+  }
+  if (existing) {
+    return { contact: existing, wasCreated: false };
+  }
+
+  let groupName: string | null = null;
+  if (resolveGroupName) {
+    try {
+      groupName = await resolveGroupName();
+    } catch (err) {
+      console.warn(
+        '[inbound-pipeline] resolveGroupName failed, using fallback name:',
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+  const fallbackName = `Group ${groupPhone.slice(-6)}`;
+
+  const { data: newContact, error: createError } = await supabaseAdmin()
+    .from('contacts')
+    .insert({
+      account_id: accountId,
+      user_id: configOwnerUserId,
+      phone: groupPhone,
+      is_group: true,
+      name: groupName || fallbackName,
+    })
+    .select()
+    .single();
+
+  if (createError) {
+    if (isUniqueViolation(createError)) {
+      const { data: raced } = await supabaseAdmin()
+        .from('contacts')
+        .select('*')
+        .eq('account_id', accountId)
+        .eq('phone_normalized', groupPhone)
+        .eq('is_group', true)
+        .maybeSingle();
+      if (raced) return { contact: raced, wasCreated: false };
+    }
+    console.error('[inbound-pipeline] error creating group contact:', createError);
     return null;
   }
 

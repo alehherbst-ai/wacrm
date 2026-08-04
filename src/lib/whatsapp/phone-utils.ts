@@ -95,6 +95,25 @@ export function phoneVariants(sanitized: string): string[] {
 }
 
 /**
+ * Resolve the list of `to` values a send attempt should try, for
+ * either a real contact or a WhatsApp group contact (see migration
+ * 038). A group id isn't a phone number — it has no trunk-prefix
+ * ambiguity to retry variants for, and Meta/UAZAPI's E.164 shape
+ * checks would reject it outright — so it gets a single-entry list
+ * built by tagging the raw digits with `@g.us`, the group-JID suffix
+ * both providers key group routing on. Returns `[]` when nothing
+ * sendable can be derived, same failure shape as an invalid phone.
+ */
+export function resolveSendTarget(phone: string, isGroup: boolean): string[] {
+  if (isGroup) {
+    const digits = normalizePhone(phone)
+    return digits ? [`${digits}@g.us`] : []
+  }
+  const sanitized = sanitizePhoneForMeta(phone)
+  return isValidE164(sanitized) ? phoneVariants(sanitized) : []
+}
+
+/**
  * Returns true when the Meta API error indicates the recipient
  * phone number isn't in the allowed list (sandbox restriction).
  * Detected via error code 131030 or the standard error text.

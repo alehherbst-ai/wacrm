@@ -35,9 +35,7 @@ import {
 import { ProviderNotSupportedError } from '@/lib/whatsapp/providers/types';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import {
-  sanitizePhoneForMeta,
-  isValidE164,
-  phoneVariants,
+  resolveSendTarget,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils';
 import type { MessageTemplate } from '@/types';
@@ -243,14 +241,15 @@ export async function sendMessageToConversation(
     );
   }
 
-  const sanitizedPhone = sanitizePhoneForMeta(contact.phone);
-  if (!isValidE164(sanitizedPhone)) {
+  const sendTargets = resolveSendTarget(contact.phone, Boolean(contact.is_group));
+  if (sendTargets.length === 0) {
     throw new SendMessageError(
       'bad_request',
       'Invalid phone number format',
       400
     );
   }
+  const sanitizedPhone = sendTargets[0];
 
   // WhatsApp connection — account-scoped, and pinned to this
   // conversation's channel when it already has one (see
@@ -417,7 +416,7 @@ export async function sendMessageToConversation(
   let waMessageId = '';
   let workingPhone = sanitizedPhone;
   try {
-    const variants = phoneVariants(sanitizedPhone);
+    const variants = sendTargets;
     let lastError: unknown = null;
 
     for (const variant of variants) {

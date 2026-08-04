@@ -732,12 +732,15 @@ export function MessageThread({
   const contactDisplayName = contact?.name || contact?.phone || "Customer";
 
   // Author label for a quoted message: "You" when we sent the parent,
-  // contact name when the customer sent it.
+  // the specific group participant when the parent came from a group
+  // thread (sender_display_name — see migration 038), otherwise the
+  // contact's own name.
   const authorLabelFor = useCallback(
     (m: Message): string => {
       const isAgentMsg =
         m.sender_type === "agent" || m.sender_type === "bot";
-      return isAgentMsg ? "You" : contactDisplayName;
+      if (isAgentMsg) return "You";
+      return m.sender_display_name || contactDisplayName;
     },
     [contactDisplayName],
   );
@@ -1090,8 +1093,8 @@ export function MessageThread({
                       ? {
                           authorLabel:
                             parent.sender_type === "agent" || parent.sender_type === "bot"
-                              ? t("me") 
-                              : contact?.name || contact?.phone || "Unknown",
+                              ? t("me")
+                              : parent.sender_display_name || contact?.name || contact?.phone || "Unknown",
                           preview: buildReplyPreview(parent, tQuote),
                         }
                       : null;

@@ -263,6 +263,42 @@ export async function sendMedia(args: SendMediaArgs): Promise<UazapiSendResult> 
   return { messageId: data.messageid };
 }
 
+// ============================================================
+// Groups
+// ============================================================
+
+export interface GetGroupInfoArgs {
+  instanceToken: string;
+  /** Group JID, e.g. "120363123456789012@g.us". */
+  groupJid: string;
+}
+
+export interface GroupInfo {
+  jid: string;
+  /** The group's subject/name as set in WhatsApp. */
+  name: string;
+}
+
+/**
+ * Fetch a group's display name. Used once, when a group is seen for
+ * the first time, to give it a real name instead of a bare id — best-
+ * effort by design, callers should fall back gracefully on failure.
+ */
+export async function getGroupInfo(args: GetGroupInfoArgs): Promise<GroupInfo> {
+  const { instanceToken, groupJid } = args;
+  const response = await fetch(`${requireBaseUrl()}/group/info`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', token: instanceToken },
+    body: JSON.stringify({ groupjid: groupJid }),
+  });
+  if (!response.ok) {
+    await throwUazapiError(response, `UAZAPI error: ${response.status}`);
+  }
+  const data = (await response.json()) as { JID?: string; Name?: string };
+  if (!data.Name) throw new Error('UAZAPI returned no group name.');
+  return { jid: data.JID ?? groupJid, name: data.Name };
+}
+
 export interface SendReactionArgs {
   instanceToken: string;
   to: string;

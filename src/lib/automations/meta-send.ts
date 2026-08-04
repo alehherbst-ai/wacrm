@@ -5,9 +5,7 @@ import {
 } from '@/lib/flows/meta-send'
 import { resolveOutboundConnection } from '@/lib/whatsapp/providers/resolve'
 import {
-  sanitizePhoneForMeta,
-  isValidE164,
-  phoneVariants,
+  resolveSendTarget,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
 import { supabaseAdmin } from './admin-client'
@@ -122,7 +120,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // new tenancy column.
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone')
+    .select('id, phone, is_group')
     .eq('id', input.contactId)
     .eq('account_id', input.accountId)
     .maybeSingle()
@@ -130,10 +128,11 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error('contact not found for this account')
   }
 
-  const sanitized = sanitizePhoneForMeta(contact.phone)
-  if (!isValidE164(sanitized)) {
+  const sendTargets = resolveSendTarget(contact.phone, Boolean(contact.is_group))
+  if (sendTargets.length === 0) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
+  const sanitized = sendTargets[0]
 
   const { provider } = await resolveOutboundConnection(db, input.accountId, {
     conversationId: input.conversationId,
@@ -163,8 +162,9 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
 
   // Same phone-variant retry as /api/whatsapp/send — Meta sandbox and
   // numbers registered with/without a trunk 0 both require this to
-  // reliably land a message.
-  const variants = phoneVariants(sanitized)
+  // reliably land a message. Groups have a single target — see
+  // resolveSendTarget.
+  const variants = sendTargets
   let workingPhone = sanitized
   let waMessageId = ''
   let lastError: unknown = null

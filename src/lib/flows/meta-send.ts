@@ -6,9 +6,7 @@ import type {
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
 import { resolveOutboundConnection } from '@/lib/whatsapp/providers/resolve'
 import {
-  sanitizePhoneForMeta,
-  isValidE164,
-  phoneVariants,
+  resolveSendTarget,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
 import { supabaseAdmin } from './admin-client'
@@ -66,7 +64,7 @@ export async function engineSendText(
 
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone')
+    .select('id, phone, is_group')
     .eq('id', args.contactId)
     .eq('account_id', args.accountId)
     .maybeSingle()
@@ -74,10 +72,11 @@ export async function engineSendText(
     throw new Error('contact not found for this account')
   }
 
-  const sanitized = sanitizePhoneForMeta(contact.phone)
-  if (!isValidE164(sanitized)) {
+  const sendTargets = resolveSendTarget(contact.phone, Boolean(contact.is_group))
+  if (sendTargets.length === 0) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
+  const sanitized = sendTargets[0]
 
   const { provider } = await resolveOutboundConnection(db, args.accountId, {
     conversationId: args.conversationId,
@@ -91,7 +90,7 @@ export async function engineSendText(
     return r.messageId
   }
 
-  const variants = phoneVariants(sanitized)
+  const variants = sendTargets
   let workingPhone = sanitized
   let waMessageId = ''
   let lastError: unknown = null
@@ -167,7 +166,7 @@ export async function engineSendMedia(
 
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone')
+    .select('id, phone, is_group')
     .eq('id', args.contactId)
     .eq('account_id', args.accountId)
     .maybeSingle()
@@ -175,10 +174,11 @@ export async function engineSendMedia(
     throw new Error('contact not found for this account')
   }
 
-  const sanitized = sanitizePhoneForMeta(contact.phone)
-  if (!isValidE164(sanitized)) {
+  const sendTargets = resolveSendTarget(contact.phone, Boolean(contact.is_group))
+  if (sendTargets.length === 0) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
+  const sanitized = sendTargets[0]
 
   const { provider } = await resolveOutboundConnection(db, args.accountId, {
     conversationId: args.conversationId,
@@ -195,7 +195,7 @@ export async function engineSendMedia(
     return r.messageId
   }
 
-  const variants = phoneVariants(sanitized)
+  const variants = sendTargets
   let workingPhone = sanitized
   let waMessageId = ''
   let lastError: unknown = null
@@ -310,7 +310,7 @@ async function sendInteractiveViaMeta(
   // Migration 017 moved both tables to account-scoped tenancy.
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone')
+    .select('id, phone, is_group')
     .eq('id', input.contactId)
     .eq('account_id', input.accountId)
     .maybeSingle()
@@ -318,10 +318,11 @@ async function sendInteractiveViaMeta(
     throw new Error('contact not found for this account')
   }
 
-  const sanitized = sanitizePhoneForMeta(contact.phone)
-  if (!isValidE164(sanitized)) {
+  const sendTargets = resolveSendTarget(contact.phone, Boolean(contact.is_group))
+  if (sendTargets.length === 0) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
+  const sanitized = sendTargets[0]
 
   const { provider } = await resolveOutboundConnection(db, input.accountId, {
     conversationId: input.conversationId,
@@ -358,7 +359,7 @@ async function sendInteractiveViaMeta(
   // Same phone-variant retry as automations/meta-send.ts. Numbers
   // registered with/without a trunk 0 + Meta's sandbox quirks all
   // need this to reliably land a message.
-  const variants = phoneVariants(sanitized)
+  const variants = sendTargets
   let workingPhone = sanitized
   let waMessageId = ''
   let lastError: unknown = null

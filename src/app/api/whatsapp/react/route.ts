@@ -5,7 +5,7 @@ import {
   WhatsAppNotConfiguredError,
   AmbiguousConnectionError,
 } from '@/lib/whatsapp/providers/resolve';
-import { sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils';
+import { resolveSendTarget } from '@/lib/whatsapp/phone-utils';
 import {
   checkRateLimit,
   rateLimitResponse,
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
 
     const { data: conversation, error: convError } = await supabase
       .from('conversations')
-      .select('id, account_id, contact:contacts(phone)')
+      .select('id, account_id, contact:contacts(phone, is_group)')
       .eq('id', targetMessage.conversation_id)
       .eq('account_id', accountId)
       .maybeSingle();
@@ -108,11 +108,17 @@ export async function POST(request: Request) {
       throw err;
     }
 
-    const sanitizedPhone = sanitizePhoneForMeta(contact.phone);
+    const sendTargets = resolveSendTarget(contact.phone, Boolean(contact.is_group));
+    if (sendTargets.length === 0) {
+      return NextResponse.json(
+        { error: 'Invalid phone number format' },
+        { status: 400 },
+      );
+    }
 
     try {
       await provider.sendReaction({
-        to: sanitizedPhone,
+        to: sendTargets[0],
         targetMessageId: targetMessage.message_id,
         emoji,
       });

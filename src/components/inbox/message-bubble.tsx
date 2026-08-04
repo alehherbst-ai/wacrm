@@ -287,6 +287,15 @@ export function MessageBubble({
             : "rounded-bl-md bg-muted text-foreground",
         )}
       >
+        {/* Group threads merge every member's messages into one
+            conversation (see migration 038) — this is the only place
+            that tells them apart, so it's shown whenever the backend
+            attributed the message to a specific participant. */}
+        {!isAgent && message.sender_display_name && (
+          <p className="mb-0.5 text-xs font-semibold text-primary">
+            {message.sender_display_name}
+          </p>
+        )}
         {reply && (
           <ReplyQuote
             authorLabel={reply.authorLabel}

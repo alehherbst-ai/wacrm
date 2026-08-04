@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
+import { getGroupInfo } from '@/lib/whatsapp/uazapi-api';
 import {
   processInboundMessage,
   type NormalizedInboundMessage,
@@ -47,6 +48,8 @@ interface UazapiMessage {
   buttonOrListid?: string;
   fileURL?: string;
   wasSentByApi?: boolean;
+  /** True for messages posted in a WhatsApp group rather than a 1:1 chat. */
+  isGroup?: boolean;
 }
 
 interface UazapiWebhookBody {
@@ -64,12 +67,30 @@ function jidToPhone(jid: string | undefined): string | null {
   return normalizePhone(local);
 }
 
+/**
+ * A group message's `chatid` is the group's own JID (e.g.
+ * `120363123456789012@g.us`); `sender` is the individual member who
+ * posted. Routing must key on `chatid` for groups — using `sender`
+ * would fragment one group thread into one fake 1:1 chat per member
+ * who ever posted in it. `isGroup` is the primary signal; the
+ * `@g.us` suffix check is a defensive fallback in case a delivery
+ * omits it (the field isn't confirmed against a live payload — see
+ * the file-level comment).
+ */
+function isGroupMessage(msg: UazapiMessage): boolean {
+  return msg.isGroup === true || Boolean(msg.chatid?.endsWith('@g.us'));
+}
+
 function toNormalizedMessage(msg: UazapiMessage): NormalizedInboundMessage | null {
-  const senderPhone = jidToPhone(msg.sender) ?? jidToPhone(msg.chatid);
+  const isGroup = isGroupMessage(msg);
+  const senderPhone = isGroup
+    ? jidToPhone(msg.chatid)
+    : jidToPhone(msg.sender) ?? jidToPhone(msg.chatid);
   if (!senderPhone || !msg.messageid) return null;
 
   const timestamp = msg.messageTimestamp ? new Date(msg.messageTimestamp) : new Date();
   const senderName = msg.senderName || senderPhone;
+  const senderDisplayName = isGroup ? msg.senderName || null : null;
 
   // A reaction event carries the target message id in `reaction` and
   // the emoji in `text` — everything else is ignored downstream.
@@ -85,6 +106,8 @@ function toNormalizedMessage(msg: UazapiMessage): NormalizedInboundMessage | nul
       interactiveReplyId: null,
       replyToProviderId: null,
       reaction: { targetProviderId: msg.reaction, emoji: msg.text || '' },
+      isGroup,
+      senderDisplayName,
     };
   }
 
@@ -110,6 +133,8 @@ function toNormalizedMessage(msg: UazapiMessage): NormalizedInboundMessage | nul
     interactiveReplyId: msg.buttonOrListid || null,
     replyToProviderId: msg.quoted || null,
     reaction: null,
+    isGroup,
+    senderDisplayName,
   };
 }
 
@@ -121,7 +146,7 @@ export async function POST(
 
   const { data: config, error: configError } = await supabaseAdmin()
     .from('whatsapp_config')
-    .select('id, account_id, user_id, provider, uazapi_webhook_secret')
+    .select('id, account_id, user_id, provider, uazapi_webhook_secret, uazapi_instance_token')
     .eq('id', connectionId)
     .eq('provider', 'uazapi')
     .maybeSingle();
@@ -192,6 +217,14 @@ export async function POST(
           accountId: config.account_id,
           configOwnerUserId: config.user_id,
           whatsappConfigId: config.id,
+          resolveGroupName:
+            normalized.isGroup && msg.chatid
+              ? async () => {
+                  const instanceToken = decrypt(config.uazapi_instance_token);
+                  const info = await getGroupInfo({ instanceToken, groupJid: msg.chatid! });
+                  return info.name;
+                }
+              : undefined,
         });
       } catch (error) {
         console.error('[uazapi-webhook] error processing message:', error);
