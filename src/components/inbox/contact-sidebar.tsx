@@ -28,6 +28,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -296,41 +297,48 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                     align="end"
                     className="max-h-64 w-56 overflow-y-auto border-border bg-popover"
                   >
-                    <DropdownMenuLabel className="text-xs text-muted-foreground">
-                      {tSidebar("addTag")}
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {allTags.length === 0 ? (
-                      <div className="px-2 py-3 text-xs text-muted-foreground">
-                        {tSidebar("noTagsAvailable")}
-                      </div>
-                    ) : (
-                      allTags.map((tag) => {
-                        const active = tagIdsOnContact.has(tag.id);
-                        return (
-                          <DropdownMenuItem
-                            key={tag.id}
-                            disabled={pendingTagId === tag.id}
-                            onSelect={(e) => {
-                              // Keep the menu open so several tags can be
-                              // applied in one go.
-                              e.preventDefault();
-                              void handleToggleTag(tag);
-                            }}
-                            className="text-sm text-popover-foreground"
-                          >
-                            <span className="flex flex-1 items-center gap-2">
-                              <span
-                                className="h-2 w-2 shrink-0 rounded-full"
-                                style={{ backgroundColor: tag.color }}
-                              />
-                              <span className="truncate">{tag.name}</span>
-                            </span>
-                            {active && <Check className="h-3.5 w-3.5 text-primary" />}
-                          </DropdownMenuItem>
-                        );
-                      })
-                    )}
+                    {/* DropdownMenuGroup is REQUIRED around the label:
+                        DropdownMenuLabel is base-ui's Menu.GroupLabel and
+                        throws at render without a Menu.Group ancestor,
+                        which crashes the whole page rather than just the
+                        menu. Same trap documented in flow-builder.tsx. */}
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">
+                        {tSidebar("addTag")}
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {allTags.length === 0 ? (
+                        <div className="px-2 py-3 text-xs text-muted-foreground">
+                          {tSidebar("noTagsAvailable")}
+                        </div>
+                      ) : (
+                        allTags.map((tag) => {
+                          const active = tagIdsOnContact.has(tag.id);
+                          return (
+                            <DropdownMenuItem
+                              key={tag.id}
+                              disabled={pendingTagId === tag.id}
+                              // base-ui closes on click by default; keeping
+                              // it open lets several tags be applied in one
+                              // pass. (`onSelect` is Radix's API, not this
+                              // library's — it would silently never fire.)
+                              closeOnClick={false}
+                              onClick={() => void handleToggleTag(tag)}
+                              className="text-sm text-popover-foreground"
+                            >
+                              <span className="flex flex-1 items-center gap-2">
+                                <span
+                                  className="h-2 w-2 shrink-0 rounded-full"
+                                  style={{ backgroundColor: tag.color }}
+                                />
+                                <span className="truncate">{tag.name}</span>
+                              </span>
+                              {active && <Check className="h-3.5 w-3.5 text-primary" />}
+                            </DropdownMenuItem>
+                          );
+                        })
+                      )}
+                    </DropdownMenuGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
@@ -390,25 +398,27 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                     {/* Which pipeline the new deal belongs to. A contact
                         can hold deals in several at once, so this is a
                         real choice, not a default. */}
-                    <DropdownMenuLabel className="text-xs text-muted-foreground">
-                      {tSidebar("newDealInPipeline")}
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {pipelines.length === 0 ? (
-                      <div className="px-2 py-3 text-xs text-muted-foreground">
-                        {tSidebar("noPipelines")}
-                      </div>
-                    ) : (
-                      pipelines.map((p) => (
-                        <DropdownMenuItem
-                          key={p.id}
-                          onClick={() => setDealPipelineId(p.id)}
-                          className="text-sm text-popover-foreground"
-                        >
-                          <span className="truncate">{p.name}</span>
-                        </DropdownMenuItem>
-                      ))
-                    )}
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">
+                        {tSidebar("newDealInPipeline")}
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {pipelines.length === 0 ? (
+                        <div className="px-2 py-3 text-xs text-muted-foreground">
+                          {tSidebar("noPipelines")}
+                        </div>
+                      ) : (
+                        pipelines.map((p) => (
+                          <DropdownMenuItem
+                            key={p.id}
+                            onClick={() => setDealPipelineId(p.id)}
+                            className="text-sm text-popover-foreground"
+                          >
+                            <span className="truncate">{p.name}</span>
+                          </DropdownMenuItem>
+                        ))
+                      )}
+                    </DropdownMenuGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
