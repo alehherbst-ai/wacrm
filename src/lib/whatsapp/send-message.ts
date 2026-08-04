@@ -5,8 +5,8 @@
 //
 // Given a conversation and message params, this:
 //   1. validates the params for the message type,
-//   2. loads the conversation + contact + WhatsApp config,
-//   3. sends to Meta (with phone-variant retry + contact auto-fix),
+//   2. loads the conversation + contact + WhatsApp connection,
+//   3. sends via UAZAPI (with phone-variant retry + contact auto-fix),
 //   4. persists the message + updates the conversation,
 //   5. pauses any active Flow run for the contact (agent stepped in).
 //
@@ -14,37 +14,30 @@
 // `accountId` and throws `SendMessageError` on failure. The callers
 // own auth, rate-limiting, body parsing, and mapping the error to
 // their respective response shapes (internal `{ error }` vs the v1
-// envelope). Behaviour is identical to the original inline route —
-// this is a straight extraction so the public endpoint can reuse it
-// without duplicating ~250 lines of Meta plumbing.
+// envelope).
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { MediaKind } from '@/lib/whatsapp/meta-api';
+import type { UazapiMediaKind } from '@/lib/whatsapp/uazapi-api';
 import {
   validateInteractivePayload,
   interactivePayloadPreviewText,
   type InteractiveMessagePayload,
 } from '@/lib/whatsapp/interactive';
 import {
-  resolveOutboundConnection,
+  resolveConnection,
   WhatsAppNotConfiguredError,
-  AmbiguousConnectionError,
-} from '@/lib/whatsapp/providers/resolve';
-import { ProviderNotSupportedError } from '@/lib/whatsapp/providers/types';
+} from '@/lib/whatsapp/uazapi-client';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import {
   resolveSendTarget,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils';
-import type { MessageTemplate } from '@/types';
-import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
 export const VALID_MESSAGE_TYPES = [
   'text',
-  'template',
   'interactive',
   ...MEDIA_KINDS,
 ] as const;
@@ -71,37 +64,18 @@ export interface SendMessageParams {
   contentText?: string | null;
   mediaUrl?: string | null;
   filename?: string | null;
-  templateName?: string | null;
-  templateLanguage?: string | null;
-  /** Legacy positional body params (only used if messageParams.body unset). */
-  templateParams?: string[];
-  /** Structured template params (header/body/buttons). */
-  templateMessageParams?: unknown;
   /** Structured payload for `messageType === 'interactive'`. */
   interactivePayload?: InteractiveMessagePayload | null;
   replyToMessageId?: string | null;
-  /**
-   * Explicit WhatsApp connection to send through. Only required when
-   * the account has more than one connection AND the conversation
-   * isn't already tied to one — see resolveOutboundConnection.
-   */
-  connectionId?: string;
 }
 
 export interface SendMessageResult {
   /** Our `messages.id` (the persisted row). */
   messageId: string;
-  /** The provider's own id for the delivered message (Meta's wamid, or UAZAPI's messageid). */
+  /** UAZAPI's own id for the delivered message. */
   whatsappMessageId: string;
 }
 
-/**
- * Send a message in an existing conversation and persist it.
- *
- * `db` may be an RLS-scoped user client (dashboard) or the service-
- * role client (public API) — every query is filtered by `accountId`
- * either way, so tenancy holds regardless of which client is passed.
- */
 /**
  * Validate the message-shape params (type, required content, caption
  * cap) independently of any DB state, throwing `SendMessageError` on a
@@ -114,11 +88,9 @@ export function validateSendMessageParams(params: {
   messageType: string;
   contentText?: string | null;
   mediaUrl?: string | null;
-  templateName?: string | null;
   interactivePayload?: InteractiveMessagePayload | null;
 }): void {
-  const { messageType, contentText, mediaUrl, templateName, interactivePayload } =
-    params;
+  const { messageType, contentText, mediaUrl, interactivePayload } = params;
 
   if (!messageType) {
     throw new SendMessageError('bad_request', 'message_type is required', 400);
@@ -142,16 +114,8 @@ export function validateSendMessageParams(params: {
     );
   }
 
-  if (messageType === 'template' && !templateName) {
-    throw new SendMessageError(
-      'bad_request',
-      'template_name is required for template messages',
-      400
-    );
-  }
-
-  // Interactive: validate the full structured payload against Meta's
-  // limits up front so a bad payload 400s before we touch Meta.
+  // Interactive: validate the full structured payload up front so a bad
+  // menu 400s before we hit the network.
   if (messageType === 'interactive') {
     const result = validateInteractivePayload(interactivePayload);
     if (!result.ok) {
@@ -167,7 +131,7 @@ export function validateSendMessageParams(params: {
     );
   }
 
-  // Meta caps media captions at 1024 chars (audio carries none).
+  // WhatsApp caps media captions at 1024 chars (audio carries none).
   if (
     isMediaKind &&
     messageType !== 'audio' &&
@@ -182,6 +146,13 @@ export function validateSendMessageParams(params: {
   }
 }
 
+/**
+ * Send a message in an existing conversation and persist it.
+ *
+ * `db` may be an RLS-scoped user client (dashboard) or the service-
+ * role client (public API) — every query is filtered by `accountId`
+ * either way, so tenancy holds regardless of which client is passed.
+ */
 export async function sendMessageToConversation(
   db: SupabaseClient,
   accountId: string,
@@ -193,13 +164,8 @@ export async function sendMessageToConversation(
     contentText,
     mediaUrl,
     filename,
-    templateName,
-    templateLanguage,
-    templateParams,
-    templateMessageParams,
     interactivePayload,
     replyToMessageId,
-    connectionId,
   } = params;
 
   if (!conversationId) {
@@ -214,7 +180,6 @@ export async function sendMessageToConversation(
     messageType,
     contentText,
     mediaUrl,
-    templateName,
     interactivePayload,
   });
 
@@ -251,44 +216,20 @@ export async function sendMessageToConversation(
   }
   const sanitizedPhone = sendTargets[0];
 
-  // WhatsApp connection — account-scoped, and pinned to this
-  // conversation's channel when it already has one (see
-  // resolveOutboundConnection for the full precedence).
-  let config: Awaited<ReturnType<typeof resolveOutboundConnection>>['config'];
-  let provider: Awaited<ReturnType<typeof resolveOutboundConnection>>['provider'];
+  let connection: Awaited<ReturnType<typeof resolveConnection>>;
   try {
-    ({ config, provider } = await resolveOutboundConnection(db, accountId, {
-      conversationId,
-      connectionId: connectionId ?? undefined,
-    }));
+    connection = await resolveConnection(db, accountId);
   } catch (err) {
     if (err instanceof WhatsAppNotConfiguredError) {
       throw new SendMessageError('whatsapp_not_configured', err.message, 400);
     }
-    if (err instanceof AmbiguousConnectionError) {
-      throw new SendMessageError('ambiguous_connection', err.message, 400);
-    }
     throw err;
   }
+  const { config, send } = connection;
 
-  if (messageType === 'template' && !provider.capabilities.templates) {
-    throw new SendMessageError(
-      'provider_not_supported',
-      'Message templates require a Meta connection.',
-      400
-    );
-  }
-  if (messageType === 'interactive' && !provider.capabilities.interactive) {
-    throw new SendMessageError(
-      'provider_not_supported',
-      'Interactive button/list messages require a Meta connection.',
-      400
-    );
-  }
-
-  // Pin the conversation to this connection if it isn't already, so a
-  // later inbound reply and any follow-up outbound send stay on the
-  // same channel. Best-effort — a failure here shouldn't block the send.
+  // Pin the conversation to this connection if it isn't already, so the
+  // thread records which number it belongs to. Best-effort — a failure
+  // here shouldn't block the send.
   if (!conversation.whatsapp_config_id) {
     void db
       .from('conversations')
@@ -304,10 +245,10 @@ export async function sendMessageToConversation(
       });
   }
 
-  // Resolve the reply target to its Meta message_id. The parent must
+  // Resolve the reply target to its provider message id. The parent must
   // belong to this same conversation — otherwise a caller could quote
   // messages they can't see by guessing UUIDs.
-  let contextMessageId: string | undefined;
+  let replyToId: string | undefined;
   if (replyToMessageId) {
     const { data: parent, error: parentError } = await db
       .from('messages')
@@ -325,94 +266,44 @@ export async function sendMessageToConversation(
     }
     if (!parent.message_id) {
       console.warn(
-        '[send-message] reply target has no Meta message_id; sending without context'
+        '[send-message] reply target has no provider message id; sending without quote'
       );
     } else {
-      contextMessageId = parent.message_id;
+      replyToId = parent.message_id;
     }
-  }
-
-  // Template row (for header + button components). isMessageTemplate
-  // guards against a malformed local row crashing the send-builder.
-  let templateRow: MessageTemplate | null = null;
-  if (messageType === 'template' && templateName) {
-    const { data } = await db
-      .from('message_templates')
-      .select('*')
-      .eq('account_id', accountId)
-      .eq('name', templateName)
-      .eq('language', templateLanguage || 'en_US')
-      .maybeSingle();
-    if (data && !isMessageTemplate(data)) {
-      throw new SendMessageError(
-        'template_malformed',
-        'Template row is malformed locally — run "Sync from Meta" in Settings to repair it.',
-        500
-      );
-    }
-    templateRow = data ?? null;
   }
 
   const attempt = async (phone: string): Promise<string> => {
-    if (messageType === 'template') {
-      const result = await provider.sendTemplate({
-        to: phone,
-        templateName: templateName!,
-        language: templateLanguage || 'en_US',
-        template: templateRow ?? undefined,
-        messageParams: templateMessageParams ?? undefined,
-        params: templateParams || [],
-        contextMessageId,
-      });
-      return result.messageId;
-    }
     if (isMediaKind) {
-      const result = await provider.sendMedia({
+      const result = await send.sendMedia({
         to: phone,
-        kind: messageType as MediaKind,
+        kind: messageType as UazapiMediaKind,
         link: mediaUrl!,
         caption: contentText || undefined,
         filename: filename || undefined,
-        contextMessageId,
+        replyToId,
       });
       return result.messageId;
     }
     if (messageType === 'interactive') {
-      const p = interactivePayload!;
-      if (p.kind === 'buttons') {
-        const result = await provider.sendInteractiveButtons({
-          to: phone,
-          bodyText: p.body,
-          headerText: p.header || undefined,
-          footerText: p.footer || undefined,
-          buttons: p.buttons,
-          contextMessageId,
-        });
-        return result.messageId;
-      }
-      const result = await provider.sendInteractiveList({
+      const result = await send.sendInteractive({
         to: phone,
-        bodyText: p.body,
-        buttonLabel: p.button_label,
-        headerText: p.header || undefined,
-        footerText: p.footer || undefined,
-        sections: p.sections,
-        contextMessageId,
+        payload: interactivePayload!,
+        replyToId,
       });
       return result.messageId;
     }
-    const result = await provider.sendText({
+    const result = await send.sendText({
       to: phone,
       text: contentText!,
-      contextMessageId,
+      replyToId,
     });
     return result.messageId;
   };
 
-  // Send via the resolved provider — retry across phone-number variants
-  // if it rejects with "recipient not in allowed list"; persist a
-  // working variant back to the contact so the next send goes straight
-  // through.
+  // Send, retrying across phone-number variants if the provider rejects
+  // the recipient; persist a working variant back to the contact so the
+  // next send goes straight through.
   let waMessageId = '';
   let workingPhone = sanitizedPhone;
   try {
@@ -432,20 +323,17 @@ export async function sendMessageToConversation(
         }
         lastError = err;
         console.warn(
-          `[send-message] variant "${variant}" rejected by Meta, trying next…`
+          `[send-message] variant "${variant}" rejected, trying next…`
         );
       }
     }
 
     if (lastError) throw lastError;
   } catch (err) {
-    if (err instanceof ProviderNotSupportedError) {
-      throw new SendMessageError('provider_not_supported', err.message, 400);
-    }
     const message =
-      err instanceof Error ? err.message : `Unknown ${provider.name} API error`;
-    console.error(`[send-message] ${provider.name} send failed for all variants:`, message);
-    throw new SendMessageError('provider_error', `${provider.name} API error: ${message}`, 502);
+      err instanceof Error ? err.message : 'Unknown UAZAPI error';
+    console.error('[send-message] send failed for all variants:', message);
+    throw new SendMessageError('provider_error', `UAZAPI error: ${message}`, 502);
   }
 
   if (workingPhone !== sanitizedPhone) {
@@ -474,7 +362,6 @@ export async function sendMessageToConversation(
       content_type: messageType,
       content_text: interactiveBody ?? contentText ?? null,
       media_url: mediaUrl || null,
-      template_name: templateName || null,
       interactive_payload:
         messageType === 'interactive' ? interactivePayload : null,
       message_id: waMessageId,
@@ -488,7 +375,7 @@ export async function sendMessageToConversation(
     console.error('[send-message] error inserting sent message:', msgError);
     throw new SendMessageError(
       'db_error',
-      `Message sent via ${provider.name} but failed to save to DB: ${msgError.message}`,
+      `Message sent but failed to save to DB: ${msgError.message}`,
       500
     );
   }

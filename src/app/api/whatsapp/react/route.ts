@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import {
-  resolveOutboundConnection,
+  resolveConnection,
   WhatsAppNotConfiguredError,
-  AmbiguousConnectionError,
-} from '@/lib/whatsapp/providers/resolve';
+} from '@/lib/whatsapp/uazapi-client';
 import { resolveSendTarget } from '@/lib/whatsapp/phone-utils';
 import {
   checkRateLimit,
@@ -17,7 +16,7 @@ import {
  *
  * Body: { message_id: <internal UUID>, emoji: <single emoji or "" to remove> }
  *
- * Sends the reaction to Meta and mirrors it into `message_reactions`
+ * Sends the reaction via UAZAPI and mirrors it into `message_reactions`
  * (delete on empty emoji). Customer-side reactions are handled by the
  * webhook — this route only writes `actor_type = 'agent'` rows.
  */
@@ -91,18 +90,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // WhatsApp connection, pinned to this conversation's channel when
-    // it already has one.
-    let provider;
+    let send;
     try {
-      ({ provider } = await resolveOutboundConnection(supabase, accountId, {
-        conversationId: conversation.id,
-      }));
+      ({ send } = await resolveConnection(supabase, accountId));
     } catch (err) {
       if (err instanceof WhatsAppNotConfiguredError) {
-        return NextResponse.json({ error: err.message }, { status: 400 });
-      }
-      if (err instanceof AmbiguousConnectionError) {
         return NextResponse.json({ error: err.message }, { status: 400 });
       }
       throw err;
@@ -117,17 +109,17 @@ export async function POST(request: Request) {
     }
 
     try {
-      await provider.sendReaction({
+      await send.sendReaction({
         to: sendTargets[0],
         targetMessageId: targetMessage.message_id,
         emoji,
       });
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : `Unknown ${provider.name} API error`;
-      console.error(`[whatsapp/react] ${provider.name} send failed:`, message);
+        err instanceof Error ? err.message : 'Unknown UAZAPI error';
+      console.error('[whatsapp/react] send failed:', message);
       return NextResponse.json(
-        { error: `${provider.name} API error: ${message}` },
+        { error: `UAZAPI error: ${message}` },
         { status: 502 },
       );
     }

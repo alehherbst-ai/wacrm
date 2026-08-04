@@ -2,7 +2,7 @@
 // Cursor pagination for public API (v1) list endpoints.
 //
 // Every `/api/v1` list route (contacts, conversations, messages,
-// broadcasts) pages the same way so integrators write one loop:
+// conversations) pages the same way so integrators write one loop:
 //
 //   GET /api/v1/contacts?limit=50
 //   → { "data": [...], "meta": { "next_cursor": "…" } }

@@ -45,17 +45,13 @@ export async function POST(request: Request) {
     const {
       // `conversation_id` targets an existing thread (inbox). `contact_id`
       // lets a caller initiate from a contact that may have no conversation
-      // yet (Contact detail → Send template) — we find-or-create one below.
+      // yet (Contact detail view) — we find-or-create one below.
       conversation_id: conversationIdInput,
       contact_id,
       message_type,
       content_text,
       media_url,
       filename,
-      template_name,
-      template_language,
-      template_params,
-      template_message_params,
       interactive_payload,
       reply_to_message_id,
     } = body
@@ -78,7 +74,6 @@ export async function POST(request: Request) {
         messageType: message_type,
         contentText: content_text,
         mediaUrl: media_url,
-        templateName: template_name,
         interactivePayload: interactive_payload,
       })
     } catch (err) {
@@ -90,8 +85,8 @@ export async function POST(request: Request) {
 
     // Resolve the target conversation. With `conversation_id` we load the
     // existing thread; with `contact_id` we find-or-create one for the
-    // contact so a business-initiated template send (Contact detail view)
-    // reuses the shared send core below.
+    // contact so a send initiated from the Contact detail view reuses the
+    // shared send core below.
     let conversationId: string | null = null
 
     if (conversationIdInput) {
@@ -148,7 +143,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Delegate to the shared send core (validates, sends to Meta with
+    // Delegate to the shared send core (validates, sends via UAZAPI with
     // phone-variant retry, persists, pauses active flow runs). Its
     // `SendMessageError` carries a machine code + HTTP status; the
     // dashboard maps it to the internal `{ error }` shape.
@@ -159,10 +154,6 @@ export async function POST(request: Request) {
         contentText: content_text,
         mediaUrl: media_url,
         filename,
-        templateName: template_name,
-        templateLanguage: template_language,
-        templateParams: template_params,
-        templateMessageParams: template_message_params,
         interactivePayload: interactive_payload,
         replyToMessageId: reply_to_message_id,
       })

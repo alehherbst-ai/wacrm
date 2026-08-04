@@ -17,7 +17,6 @@ import {
   Trash2,
   GripVertical,
   MessageSquare,
-  FileText,
   Tag,
   TagIcon,
   UserCheck,
@@ -52,7 +51,6 @@ import type {
   CustomField,
   InteractiveMessagePayload,
   KeywordMatchTriggerConfig,
-  MessageTemplate,
   Tag as TagRecord,
 } from "@/types"
 import {
@@ -101,7 +99,6 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   send_message: { label: "send_message", icon: MessageSquare, border: "border-l-primary" },
   send_buttons: { label: "send_buttons", icon: MousePointerClick, border: "border-l-primary" },
   send_list: { label: "send_list", icon: List, border: "border-l-primary" },
-  send_template: { label: "send_template", icon: FileText, border: "border-l-primary" },
   add_tag: { label: "add_tag", icon: Tag, border: "border-l-primary" },
   remove_tag: { label: "remove_tag", icon: TagIcon, border: "border-l-primary" },
   assign_conversation: { label: "assign_conversation", icon: UserCheck, border: "border-l-primary" },
@@ -117,7 +114,6 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "send_message",
   "send_buttons",
   "send_list",
-  "send_template",
   "add_tag",
   "remove_tag",
   "assign_conversation",
@@ -169,8 +165,6 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
       return toStepConfig(blankButtonsPayload())
     case "send_list":
       return toStepConfig(blankListPayload())
-    case "send_template":
-      return { template_name: "", language: "en_US" }
     case "add_tag":
     case "remove_tag":
       return { tag_id: "" }
@@ -194,10 +188,10 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
 }
 
 // ------------------------------------------------------------
-// Account resources (tags, members, approved templates, pipelines)
+// Account resources (tags, members, pipelines)
 //
 // Loaded once at the builder root and shared via context so the
-// tag / agent / template pickers below can offer existing resources
+// tag / agent / pipeline pickers below can offer existing resources
 // by name instead of asking the user to paste raw UUIDs. Every picker
 // falls back to a raw input when its list is empty (fresh account or
 // an older deployment), so an automation is always authorable.
@@ -206,7 +200,6 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
 interface AutomationResources {
   tags: TagRecord[]
   members: AccountMember[]
-  templates: MessageTemplate[]
   customFields: CustomField[]
   pipelines: PipelineOption[]
   stages: PipelineStageOption[]
@@ -227,7 +220,6 @@ interface PipelineStageOption {
 const ResourcesContext = createContext<AutomationResources>({
   tags: [],
   members: [],
-  templates: [],
   customFields: [],
   pipelines: [],
   stages: [],
@@ -240,7 +232,6 @@ function useResources(): AutomationResources {
 function ResourcesProvider({ children }: { children: ReactNode }) {
   const [tags, setTags] = useState<TagRecord[]>([])
   const [members, setMembers] = useState<AccountMember[]>([])
-  const [templates, setTemplates] = useState<MessageTemplate[]>([])
   const [customFields, setCustomFields] = useState<CustomField[]>([])
   const [pipelines, setPipelines] = useState<PipelineOption[]>([])
   const [stages, setStages] = useState<PipelineStageOption[]>([])
@@ -249,19 +240,12 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     const supabase = createClient()
 
-    // Tags, templates and custom fields come straight from the DB — RLS
-    // scopes them to the caller's account. Only APPROVED templates can
-    // actually be sent (anything else 400s at send time), matching the
-    // broadcast picker.
+    // Tags and custom fields come straight from the DB — RLS scopes
+    // them to the caller's account.
     void (async () => {
-      const [tagsRes, templatesRes, customFieldsRes, pipelinesRes, stagesRes] =
+      const [tagsRes, customFieldsRes, pipelinesRes, stagesRes] =
         await Promise.all([
           supabase.from("tags").select("*").order("name"),
-          supabase
-            .from("message_templates")
-            .select("*")
-            .eq("status", "APPROVED")
-            .order("name"),
           supabase.from("custom_fields").select("*").order("field_name"),
           supabase.from("pipelines").select("id, name").order("name"),
           supabase
@@ -271,7 +255,6 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
         ])
       if (cancelled) return
       setTags((tagsRes.data as TagRecord[] | null) ?? [])
-      setTemplates((templatesRes.data as MessageTemplate[] | null) ?? [])
       setCustomFields((customFieldsRes.data as CustomField[] | null) ?? [])
       setPipelines((pipelinesRes.data as PipelineOption[] | null) ?? [])
       setStages((stagesRes.data as PipelineStageOption[] | null) ?? [])
@@ -298,7 +281,7 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
 
   return (
     <ResourcesContext.Provider
-      value={{ tags, members, templates, customFields, pipelines, stages }}
+      value={{ tags, members, customFields, pipelines, stages }}
     >
       {children}
     </ResourcesContext.Provider>
@@ -538,84 +521,6 @@ function DealPipelineFields({
         </select>
       </FieldBlock>
     </>
-  )
-}
-
-/** Template dropdown showing approved templates by name + language,
- *  storing both template_name and language. Falls back to manual name +
- *  language inputs when no approved templates are synced yet. */
-function SendTemplateFields({
-  templateName,
-  language,
-  onChange,
-  t,
-}: {
-  templateName: string
-  language: string
-  onChange: (patch: { template_name: string; language: string }) => void
-  t: ReturnType<typeof useTranslations>
-}) {
-  const { templates } = useResources()
-
-  if (templates.length === 0) {
-    return (
-      <>
-        <FieldBlock label={t("templates.templateNameLabel")}>
-          <Input
-            value={templateName}
-            onChange={(e) =>
-              onChange({ template_name: e.target.value, language })
-            }
-            className="bg-muted text-foreground"
-          />
-        </FieldBlock>
-        <FieldBlock label={t("templates.languageLabel")}>
-          <Input
-            value={language}
-            onChange={(e) =>
-              onChange({ template_name: templateName, language: e.target.value })
-            }
-            className="bg-muted text-foreground"
-          />
-        </FieldBlock>
-      </>
-    )
-  }
-
-  // Encode name + language in the option value so two templates that
-  // share a name across languages stay distinct.
-  const toValue = (name: string, lang: string) => `${name}::${lang}`
-  const current = templateName ? toValue(templateName, language) : ""
-  const hasMatch = templates.some(
-    (t) => toValue(t.name, t.language ?? "en_US") === current,
-  )
-
-  return (
-    <FieldBlock label={t("templates.templateLabel")}>
-      <select
-        value={current}
-        onChange={(e) => {
-          const [name, lang] = e.target.value.split("::")
-          onChange({ template_name: name ?? "", language: lang ?? "" })
-        }}
-        className={SELECT_CLASS}
-      >
-        <option value="">{t("templates.select")}</option>
-        {templates.map((tmpl) => {
-          const lang = tmpl.language ?? "en_US"
-          return (
-            <option key={tmpl.id} value={toValue(tmpl.name, lang)}>
-              {tmpl.name} ({lang})
-            </option>
-          )
-        })}
-        {current && !hasMatch && (
-          <option value={current}>
-            {t("templates.unknown", { name: templateName, lang: language || t("templates.unknownLang") })}
-          </option>
-        )}
-      </select>
-    </FieldBlock>
   )
 }
 
@@ -1304,15 +1209,6 @@ function StepEditor({
           }
         />
       )
-    case "send_template":
-      return (
-        <SendTemplateFields
-          templateName={(cfg.template_name as string) ?? ""}
-          language={(cfg.language as string) ?? ""}
-          onChange={(patch) => set(patch)}
-          t={t}
-        />
-      )
     case "add_tag":
     case "remove_tag":
       return (
@@ -1513,8 +1409,6 @@ function previewFor(step: BuilderStep): string {
     case "send_buttons":
     case "send_list":
       return interactivePayloadPreviewText(asInteractive(step.step_config)) || "no body yet"
-    case "send_template":
-      return (step.step_config.template_name as string) || "pick a template"
     case "wait":
       return `${step.step_config.amount ?? "?"} ${step.step_config.unit ?? ""}`
     case "condition":

@@ -269,7 +269,7 @@ export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> 
   // Pull ~10 from each source (plenty of headroom after merge-sort),
   // then interleave by timestamp. The individual per-table limits
   // keep the payload small; the final limit is enforced after sort.
-  const [msgs, contacts, deals, broadcasts, autoLogs] = await Promise.all([
+  const [msgs, contacts, deals, autoLogs] = await Promise.all([
     db
       .from('messages')
       .select('id, content_text, sender_type, created_at, conversation_id, conversations(contact_id, contacts(name, phone))')
@@ -286,11 +286,6 @@ export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> 
       .select('id, title, updated_at, stage:pipeline_stages(name)')
       .order('updated_at', { ascending: false })
       .limit(10),
-    db
-      .from('broadcasts')
-      .select('id, name, status, total_recipients, created_at')
-      .order('created_at', { ascending: false })
-      .limit(5),
     db
       .from('automation_logs')
       .select('id, trigger_event, status, created_at, automation:automations(name), contact:contacts(name, phone)')
@@ -349,26 +344,6 @@ export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> 
         : `Deal "${d.title}" updated`,
       at: d.updated_at,
       href: '/pipelines',
-    })
-  }
-
-  for (const b of (broadcasts.data ?? []) as Array<{
-    id: string
-    name: string
-    status: string
-    total_recipients: number
-    created_at: string
-  }>) {
-    const label =
-      b.status === 'sent'
-        ? `sent to ${b.total_recipients} contacts`
-        : `${b.status} (${b.total_recipients} recipients)`
-    items.push({
-      id: `broadcast-${b.id}`,
-      kind: 'broadcast',
-      text: `Broadcast "${b.name}" ${label}`,
-      at: b.created_at,
-      href: '/broadcasts',
     })
   }
 

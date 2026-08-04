@@ -11,8 +11,7 @@ import { SettingsOverview } from '@/components/settings/settings-overview';
 import { ProfileForm } from '@/components/settings/profile-form';
 import { SecurityPanel } from '@/components/settings/security-panel';
 import { AppearancePanel } from '@/components/settings/appearance-panel';
-import { WhatsAppConfig } from '@/components/settings/whatsapp-config';
-import { TemplateManager } from '@/components/settings/template-manager';
+import { UazapiConnect } from '@/components/settings/uazapi-connect';
 import { QuickRepliesManager } from '@/components/settings/quick-replies-manager';
 import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel';
 import { DealsSettings } from '@/components/settings/deals-settings';
@@ -74,8 +73,7 @@ function SettingsPageInner() {
     profile: <ProfileForm />,
     security: <SecurityPanel />,
     appearance: <AppearancePanel />,
-    whatsapp: <WhatsAppConfig />,
-    templates: <TemplateManager />,
+    whatsapp: <UazapiConnect />,
     'quick-replies': <QuickRepliesManager />,
     fields: <FieldsAndTagsPanel />,
     deals: <DealsSettings />,

@@ -91,7 +91,6 @@ export async function POST(request: Request) {
       messageType: type,
       contentText: typeof body.text === 'string' ? body.text : null,
       mediaUrl: typeof body.media_url === 'string' ? body.media_url : null,
-      templateName: typeof template?.name === 'string' ? template.name : null,
       interactivePayload,
     });
 
@@ -114,11 +113,6 @@ export async function POST(request: Request) {
         contentText: typeof body.text === 'string' ? body.text : null,
         mediaUrl: typeof body.media_url === 'string' ? body.media_url : null,
         filename: typeof body.filename === 'string' ? body.filename : null,
-        templateName: typeof template?.name === 'string' ? template.name : null,
-        templateLanguage:
-          typeof template?.language === 'string' ? template.language : null,
-        templateParams,
-        templateMessageParams,
         interactivePayload,
         replyToMessageId:
           typeof body.reply_to_message_id === 'string'

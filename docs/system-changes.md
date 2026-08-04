@@ -6,6 +6,30 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-04] Sistema reestruturado para 100% UAZAPI — API Oficial da Meta removida
+
+> **MARCO.** Para resgatar a arquitetura anterior (dois provedores convivendo):
+> `git switch -c restaura-meta marco/arquitetura-multi-provedor-meta-uazapi`
+> Branch espelho: `legacy/meta-multiprovedor`. Ambos publicados no GitHub, apontando para `98aaf27`.
+
+**Antes:** o projeto nasceu para a API Oficial da Meta e ganhou a UAZAPI depois, como segundo provedor. O código pagava o custo permanente dos dois mundos: uma camada de abstração de provedores com flags de capacidade, um cliente completo da Graph API (1044 linhas), todo o aparato de aprovação de modelos pela Meta, registro de número com PIN de duas etapas, verificação de assinatura HMAC no webhook, proxy autenticado de mídia e a janela de 24 horas — nada disso existe ou faz sentido numa operação via UAZAPI. Todo envio passava por uma indireção que perguntava "Meta ou UAZAPI?" antes de qualquer coisa.
+
+**Depois:** a UAZAPI é o único provedor.
+- **Camada de provedores eliminada.** `src/lib/whatsapp/providers/` (4 arquivos) deu lugar a um único `uazapi-client.ts`: resolve a conexão da conta e devolve um remetente já com o token da instância. Sem interface de provedor, sem `capabilities`, sem `ProviderNotSupportedError`.
+- **Funcionalidade preservada, não degradada.** Descobri durante o planejamento que a UAZAPI suporta botões e listas nativamente (`POST /send/menu`) e que o toque do cliente já voltava mapeado no webhook (`buttonOrListid`). Em vez de remover os nós interativos, implementei `sendMenu` traduzindo o modelo interno para o formato de `choices` da UAZAPI — **Flows, Automações, respostas rápidas e o compositor continuam funcionando por inteiro**.
+- **Removidos:** núcleo da Meta (cliente da Graph API, webhook, rotas de config/registro, proxy de mídia, tela de credenciais), a feature de **Modelos** completa (incluindo o passo `send_template` das Automações) e a feature de **Transmissões** completa, com todas as referências cruzadas (navegação, painel, papéis, escopos de chave de API, rate-limit, middleware, API pública v1).
+- **Janela de 24 horas removida** — é regra da Meta, não do WhatsApp. O compositor agora está sempre habilitado.
+- Env: `META_APP_SECRET` e `META_APP_ID` saíram; `UAZAPI_BASE_URL` e `UAZAPI_ADMIN_TOKEN` passaram de opcionais a **obrigatórios**.
+
+**Sem migration.** Decisão deliberada: as tabelas `message_templates`, `broadcasts` e `broadcast_recipients` **não foram dropadas** — deletar tabela é perda de dado irreversível que a tag do Git não recupera. Ficam órfãs, sem código apontando para elas, e podem ser removidas depois com calma. `whatsapp_config` também fica como está; o código só para de ramificar na coluna `provider`.
+
+**Resolvido:** atende ao pedido do usuário de otimizar o sistema inteiro em torno da UAZAPI. Verificação: `typecheck` limpo, `lint` com 0 erros (warnings caíram de 40 → 37), 502 testes passando (as 5 falhas restantes são as pré-existentes de fuso/ICU, sem relação).
+
+Arquivos: `src/lib/whatsapp/{uazapi-client,uazapi-api,send-message,interactive}.ts`,
+`src/lib/{automations,flows}/whatsapp-send.ts` (renomeados de `meta-send.ts`),
+`src/components/settings/settings-sections.ts`, `src/components/inbox/{message-thread,message-composer}.tsx`,
+`src/types/index.ts`, `messages/{pt-BR,en,ko}.json`, `.env.local.example`, `docs/public-api.md`
+
 ## [2026-08-04] Inbox parecia não atualizar em tempo real; sem forma de limpar não lidas; nome do CRM
 
 **Antes:**

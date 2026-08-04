@@ -1,6 +1,5 @@
 import {
   Coins,
-  FileText,
   KeyRound,
   LayoutGrid,
   Palette,
@@ -27,7 +26,6 @@ export const SETTINGS_SECTIONS = [
   'security',
   'appearance',
   'whatsapp',
-  'templates',
   'quick-replies',
   'fields',
   'deals',
@@ -53,7 +51,6 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   security: { id: 'security', label: 'Login & security', icon: Shield, group: 'account' },
   appearance: { id: 'appearance', label: 'Appearance', icon: Palette, group: 'account' },
   whatsapp: { id: 'whatsapp', label: 'WhatsApp', icon: PlugZap, group: 'workspace' },
-  templates: { id: 'templates', label: 'Templates', icon: FileText, group: 'workspace' },
   'quick-replies': { id: 'quick-replies', label: 'Quick replies', icon: Zap, group: 'workspace' },
   fields: { id: 'fields', label: 'Fields & tags', icon: Tags, group: 'workspace' },
   deals: { id: 'deals', label: 'Deals & currency', icon: Coins, group: 'workspace' },
@@ -79,6 +76,10 @@ function isSection(value: string | null): value is SettingsSection {
  */
 export function resolveSection(raw: string | null): SettingsSection {
   if (raw === 'tags' || raw === 'custom-fields') return 'fields';
+  // `templates` was removed with the Meta integration — approved message
+  // templates only ever existed to satisfy Meta's review process. Old
+  // bookmarks land on the WhatsApp connection instead of a dead tab.
+  if (raw === 'templates') return 'whatsapp';
   if (isSection(raw)) return raw;
   return DEFAULT_SECTION;
 }

@@ -82,7 +82,7 @@ export function canEditSettings(role: AccountRole): boolean {
 
 /**
  * Owner / admin / agent: write operational data — send messages,
- * create contacts, move deals, run broadcasts, edit automations.
+ * create contacts, move deals, edit automations.
  * Viewers are read-only.
  */
 export function canSendMessages(role: AccountRole): boolean {

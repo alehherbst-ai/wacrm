@@ -57,11 +57,11 @@ describe('sendMessageToConversation — param validation (pre-DB)', () => {
     );
   });
 
-  it('requires template_name for template messages', async () => {
+  it('rejects template as a message type (Meta-only concept, removed)', async () => {
     await expectSendError(
       { ...base, messageType: 'template' },
       400,
-      /template_name is required/
+      /Unsupported message_type/
     );
   });
 

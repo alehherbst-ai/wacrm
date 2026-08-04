@@ -299,6 +299,105 @@ export async function getGroupInfo(args: GetGroupInfoArgs): Promise<GroupInfo> {
   return { jid: data.JID ?? groupJid, name: data.Name };
 }
 
+// ============================================================
+// Interactive menus (reply buttons / selectable lists)
+// ============================================================
+
+export interface SendMenuButtonsArgs {
+  instanceToken: string;
+  to: string;
+  kind: 'buttons';
+  /** Body text shown above the buttons. */
+  text: string;
+  footerText?: string;
+  buttons: { id: string; title: string }[];
+  replyId?: string;
+}
+
+export interface SendMenuListArgs {
+  instanceToken: string;
+  to: string;
+  kind: 'list';
+  text: string;
+  footerText?: string;
+  /** Label of the tap-to-expand button on the message bubble. */
+  listButton: string;
+  sections: {
+    title?: string;
+    rows: { id: string; title: string; description?: string }[];
+  }[];
+  replyId?: string;
+}
+
+export type SendMenuArgs = SendMenuButtonsArgs | SendMenuListArgs;
+
+/**
+ * Escape the `|` separator UAZAPI uses to split a choice into its
+ * parts. A button labelled "Sim | Não" would otherwise be parsed as
+ * label "Sim " with id " Não", silently changing the id the webhook
+ * echoes back — which is what Flows route on. No documented escape
+ * exists, so the separator is replaced with a lookalike instead of
+ * corrupting the routing id.
+ */
+function sanitizeChoicePart(value: string): string {
+  return value.replace(/\|/g, '∣');
+}
+
+/**
+ * Send an interactive menu — reply buttons or a selectable list.
+ *
+ * UAZAPI expresses both through one endpoint and a single flat
+ * `choices` array of pipe-delimited strings, rather than the nested
+ * object payloads other WhatsApp APIs use:
+ *   - buttons: `"label|id"`
+ *   - list:    `"[Section title]"` opens a section, then
+ *              `"label|id|description"` per row
+ *
+ * The customer's tap comes back on the webhook as `buttonOrListid`,
+ * which the inbound normalizer maps to `interactiveReplyId` — that's
+ * what advances a Flow run, so the ids sent here must round-trip
+ * unchanged (see sanitizeChoicePart).
+ */
+export async function sendMenu(args: SendMenuArgs): Promise<UazapiSendResult> {
+  const { instanceToken, to, text, footerText, replyId } = args;
+
+  const body: Record<string, unknown> = { number: to, text };
+  if (footerText) body.footerText = footerText;
+  if (replyId) body.replyid = replyId;
+
+  if (args.kind === 'buttons') {
+    body.type = 'button';
+    body.choices = args.buttons.map(
+      (b) => `${sanitizeChoicePart(b.title)}|${sanitizeChoicePart(b.id)}`
+    );
+  } else {
+    body.type = 'list';
+    body.listButton = args.listButton;
+    const choices: string[] = [];
+    for (const section of args.sections) {
+      if (section.title) choices.push(`[${section.title}]`);
+      for (const row of section.rows) {
+        const parts = [sanitizeChoicePart(row.title), sanitizeChoicePart(row.id)];
+        if (row.description) parts.push(sanitizeChoicePart(row.description));
+        choices.push(parts.join('|'));
+      }
+    }
+    body.choices = choices;
+  }
+
+  const response = await fetch(`${requireBaseUrl()}/send/menu`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', token: instanceToken },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    await throwUazapiError(response, `UAZAPI error: ${response.status}`);
+  }
+  const data = (await response.json()) as { messageid?: string };
+  if (!data.messageid) throw new Error('UAZAPI sent the menu but returned no id.');
+  return { messageId: data.messageid };
+}
+
 export interface SendReactionArgs {
   instanceToken: string;
   to: string;

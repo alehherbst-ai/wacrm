@@ -9,19 +9,32 @@
 //   - the message bubble + preview (render),
 //   - quick replies (store an interactive snippet).
 //
-// The field names (`id`/`title`/`description` on buttons/rows) match
-// `meta-api.ts`'s `InteractiveButton` / `InteractiveListRow` /
-// `InteractiveListSection` on purpose, so a payload maps straight onto
-// the Meta send args with no translation.
-//
-// `validateInteractivePayload` mirrors the throws already inside the
-// meta-api senders, but returns a result object so callers (API routes,
-// activation checks) can surface a clean error to the user *before* the
-// network call rather than turning a bad payload into a 400 from Meta
-// mid-conversation.
+// `validateInteractivePayload` returns a result object so callers (API
+// routes, flow activation checks) can surface a clean error to the user
+// *before* the network call, rather than letting a malformed menu fail
+// mid-conversation at the provider.
 // ============================================================
 
-import { INTERACTIVE_LIMITS } from './meta-api'
+/**
+ * Caps applied to an interactive message before it's sent.
+ *
+ * These originate from the WhatsApp client itself, not from any one
+ * API vendor — a menu that exceeds them renders broken (or not at all)
+ * on the recipient's phone regardless of how it was sent. UAZAPI
+ * accepts larger payloads without complaint, so validating here is what
+ * keeps us from producing menus the customer can't actually use.
+ */
+export const INTERACTIVE_LIMITS = {
+  maxButtons: 3,
+  buttonTitleMaxLength: 20,
+  maxListSections: 10,
+  maxListRowsTotal: 10,
+  listRowTitleMaxLength: 24,
+  listRowDescriptionMaxLength: 72,
+  bodyMaxLength: 1024,
+  footerMaxLength: 60,
+  headerTextMaxLength: 60,
+} as const
 
 export interface InteractiveButton {
   /** Stable id echoed back in the webhook when tapped. */

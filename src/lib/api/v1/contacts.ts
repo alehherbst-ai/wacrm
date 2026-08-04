@@ -63,7 +63,7 @@ export function serializeContact(row: Record<string, unknown>): ApiContact {
 /**
  * Resolve the audit `user_id` for API-created rows — the SINGLE source
  * of truth used by every public-API write (contacts, messages,
- * broadcasts, resolve-conversation), so the same key's writes are
+ * resolve-conversation), so the same key's writes are
  * always attributed to the same human. API callers have no logged-in
  * user, so — like the inbound webhook — we attribute writes to the
  * **WhatsApp config owner** (the webhook's own convention). Contacts

@@ -1,12 +1,12 @@
 # Public API (`/api/v1`)
 
-The public API lets you drive your wacrm instance from your own
-scripts and automations — send messages, manage contacts, launch
-broadcasts — without going through the dashboard UI.
+The public API lets you drive your Uniko CRM instance from your own
+scripts and automations — send messages, manage contacts — without
+going through the dashboard UI.
 
 > **Status:** stable. Authentication, scopes, rate limiting, the
-> messages / contacts / conversations / broadcasts endpoints, and
-> outbound event [webhooks](#webhooks) all ship now.
+> messages / contacts / conversations endpoints, and outbound event
+> [webhooks](#webhooks) all ship now.
 
 ## Authentication
 
@@ -48,7 +48,6 @@ it. Grant the minimum.
 | `contacts:read`      | List and read contacts                   |
 | `contacts:write`     | Create and update contacts               |
 | `conversations:read` | List and read conversations              |
-| `broadcasts:send`    | Launch broadcast campaigns               |
 | `webhooks:manage`    | Register and manage outbound webhooks    |
 
 A key with **no scopes** still authenticates and can call
@@ -128,20 +127,15 @@ curl -X POST https://your-crm.example.com/api/v1/messages \
   -d '{ "to": "+14155550123", "type": "text", "text": "Hi 👋" }'
 ```
 
-`type` is `text` (default), `template`, or a media kind (`image` /
+`type` is `text` (default), `interactive`, or a media kind (`image` /
 `video` / `document` / `audio`). Media needs `media_url` (and optional
-`filename`); `text` doubles as the caption. `template` needs a
-`template` object:
+`filename`); `text` doubles as the caption.
 
 ```jsonc
 {
   "to": "+14155550123",
-  "type": "template",
-  "template": {
-    "name": "order_update",
-    "language": "en_US",
-    "params": ["A123"]        // positional body vars, or a structured object
-  },
+  "type": "text",
+  "text": "Hi 👋",
   "reply_to_message_id": "<uuid>"   // optional; must be in the same conversation
 }
 ```
@@ -152,7 +146,7 @@ Response (201):
 {
   "data": {
     "message_id": "…",
-    "whatsapp_message_id": "wamid.…",
+    "whatsapp_message_id": "…",
     "conversation_id": "…",
     "contact_id": "…",
     "contact_created": true
@@ -161,8 +155,8 @@ Response (201):
 ```
 
 Domain error codes beyond the table above: `whatsapp_not_configured`
-(400), `meta_error` (502 — the request reached Meta and it rejected the
-send), `template_malformed` (500).
+(400 — no WhatsApp number connected) and `provider_error` (502 — the
+request reached UAZAPI and it rejected the send).
 
 ### `GET /api/v1/contacts`
 
@@ -218,50 +212,6 @@ Paginated. Each message includes its `direction` (`inbound` /
 `outbound`), `status` (delivery state), `whatsapp_message_id`, and
 `content_*`. The conversation is verified to belong to your account
 first (`404` otherwise).
-
-### `POST /api/v1/broadcasts`
-
-Launch a template broadcast to a list of recipients. Scope:
-`broadcasts:send`. The broadcast + its recipient rows are persisted
-immediately and the sends fan out in the background, so the call
-returns fast — poll `GET /api/v1/broadcasts/{id}` for progress.
-
-```bash
-curl -X POST https://your-crm.example.com/api/v1/broadcasts \
-  -H "Authorization: Bearer wacrm_live_xxx" \
-  -H "Content-Type: application/json" \
-  -d '{
-        "name": "July promo",
-        "template_name": "promo_july",
-        "template_language": "en_US",
-        "recipients": [
-          { "to": "+14155550123", "params": ["Jane"] },
-          { "to": "+14155550124" }
-        ]
-      }'
-```
-
-Recipients are capped at **1000 per request** — split larger sends.
-Invalid phone numbers are dropped and counted as `rejected`. Response
-(202):
-
-```json
-{
-  "data": {
-    "broadcast_id": "…",
-    "status": "sending",
-    "total_recipients": 2,
-    "accepted": 2,
-    "rejected": 0
-  }
-}
-```
-
-### `GET /api/v1/broadcasts/{id}`
-
-Broadcast status + counts. Scope: `broadcasts:send`. `status` moves
-`sending` → `sent`; `delivered_count` / `read_count` keep climbing as
-Meta delivery webhooks arrive. `404` for another account's broadcast.
 
 ## Pagination
 
@@ -359,8 +309,8 @@ const ok = crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
 
 Delivery is **best-effort**: a single attempt per event with a short
 timeout, and **redirects are not followed**. `message.status_updated`
-covers messages wacrm stores (inbox + API sends), not broadcast-only
-sends, and — because providers re-send and re-order status callbacks —
+covers the messages Uniko CRM stores (inbox + API sends), and —
+because providers re-send and re-order status callbacks —
 the same status may arrive more than once or out of order; **dedupe on
 `id` and don't assume ordering**. Each consecutive failure increments
 `failure_count`; after enough consecutive failures the endpoint is
@@ -376,8 +326,6 @@ internal targets are refused at delivery time.
 
 ## Roadmap
 
-The public API now covers messaging, contacts, conversations,
-broadcasts, and outbound webhooks — the full scope of
-[#245](https://github.com/ArnasDon/wacrm/issues/245). Future ideas
-(deals/pipelines, templates, flows, a delivery queue for webhooks) are
-not yet scheduled.
+The public API now covers messaging, contacts, conversations, and
+outbound webhooks. Future ideas (deals/pipelines, flows, a delivery
+queue for webhooks) are not yet scheduled.

@@ -1,10 +1,10 @@
+import type { UazapiMediaKind } from '@/lib/whatsapp/uazapi-api'
 import type {
   InteractiveButton,
   InteractiveListSection,
-  MediaKind,
-} from '@/lib/whatsapp/meta-api'
-import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
-import { resolveOutboundConnection } from '@/lib/whatsapp/providers/resolve'
+  InteractiveMessagePayload,
+} from '@/lib/whatsapp/interactive'
+import { resolveConnection } from '@/lib/whatsapp/uazapi-client'
 import {
   resolveSendTarget,
   isRecipientNotAllowedError,
@@ -14,7 +14,7 @@ import { supabaseAdmin } from './admin-client'
 // ------------------------------------------------------------
 // Flows-side sender (interactive variants).
 //
-// Mirrors src/lib/automations/meta-send.ts (engineSendText /
+// Mirrors src/lib/automations/whatsapp-send.ts (engineSendText /
 // engineSendTemplate) but emits interactive button + list messages.
 // Kept separate from the automations file so the two engines don't
 // fight over each other's shape — once both stabilize, the
@@ -78,15 +78,10 @@ export async function engineSendText(
   }
   const sanitized = sendTargets[0]
 
-  const { provider } = await resolveOutboundConnection(db, args.accountId, {
-    conversationId: args.conversationId,
-  })
+  const { send } = await resolveConnection(db, args.accountId)
 
   const attempt = async (phone: string): Promise<string> => {
-    const r = await provider.sendText({
-      to: phone,
-      text: args.text,
-    })
+    const r = await send.sendText({ to: phone, text: args.text })
     return r.messageId
   }
 
@@ -122,7 +117,7 @@ export async function engineSendText(
     ai_generated: args.aiGenerated ?? false,
   })
   if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+    throw new Error(`sent but DB insert failed: ${msgErr.message}`)
   }
 
   await db
@@ -142,7 +137,7 @@ interface SendMediaEngineArgs {
   userId: string
   conversationId: string
   contactId: string
-  kind: MediaKind
+  kind: UazapiMediaKind
   /** Public URL Meta fetches at send time. */
   link: string
   caption?: string
@@ -180,12 +175,10 @@ export async function engineSendMedia(
   }
   const sanitized = sendTargets[0]
 
-  const { provider } = await resolveOutboundConnection(db, args.accountId, {
-    conversationId: args.conversationId,
-  })
+  const { send } = await resolveConnection(db, args.accountId)
 
   const attempt = async (phone: string): Promise<string> => {
-    const r = await provider.sendMedia({
+    const r = await send.sendMedia({
       to: phone,
       kind: args.kind,
       link: args.link,
@@ -231,7 +224,7 @@ export async function engineSendMedia(
     status: 'sent',
   })
   if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+    throw new Error(`sent but DB insert failed: ${msgErr.message}`)
   }
 
   await db
@@ -283,7 +276,7 @@ interface SendInteractiveListEngineArgs {
 export async function engineSendInteractiveButtons(
   args: SendInteractiveButtonsEngineArgs,
 ): Promise<{ whatsapp_message_id: string }> {
-  return sendInteractiveViaMeta({ ...args, kind: 'buttons' })
+  return sendInteractiveMenu({ ...args, kind: 'buttons' })
 }
 
 /**
@@ -293,20 +286,20 @@ export async function engineSendInteractiveButtons(
 export async function engineSendInteractiveList(
   args: SendInteractiveListEngineArgs,
 ): Promise<{ whatsapp_message_id: string }> {
-  return sendInteractiveViaMeta({ ...args, kind: 'list' })
+  return sendInteractiveMenu({ ...args, kind: 'list' })
 }
 
 type SendInput =
   | (SendInteractiveButtonsEngineArgs & { kind: 'buttons' })
   | (SendInteractiveListEngineArgs & { kind: 'list' })
 
-async function sendInteractiveViaMeta(
+async function sendInteractiveMenu(
   input: SendInput,
 ): Promise<{ whatsapp_message_id: string }> {
   const db = supabaseAdmin()
 
   // Scope the contact + whatsapp_config lookups by account_id —
-  // same defense-in-depth rationale as automations/meta-send.ts.
+  // same defense-in-depth rationale as automations/whatsapp-send.ts.
   // Migration 017 moved both tables to account-scoped tenancy.
   const { data: contact, error: contactErr } = await db
     .from('contacts')
@@ -324,40 +317,32 @@ async function sendInteractiveViaMeta(
   }
   const sanitized = sendTargets[0]
 
-  const { provider } = await resolveOutboundConnection(db, input.accountId, {
-    conversationId: input.conversationId,
-  })
-
-  if (!provider.capabilities.interactive) {
-    throw new Error(
-      `Interactive button/list messages require a Meta connection (this conversation is on ${provider.name}).`
-    )
-  }
+  const { send } = await resolveConnection(db, input.accountId)
 
   const attempt = async (phone: string): Promise<string> => {
-    if (input.kind === 'buttons') {
-      const r = await provider.sendInteractiveButtons({
-        to: phone,
-        bodyText: input.bodyText,
-        buttons: input.buttons,
-        headerText: input.headerText,
-        footerText: input.footerText,
-      })
-      return r.messageId
-    }
-    const r = await provider.sendInteractiveList({
-      to: phone,
-      bodyText: input.bodyText,
-      buttonLabel: input.buttonLabel,
-      sections: input.sections,
-      headerText: input.headerText,
-      footerText: input.footerText,
-    })
+    const payload: InteractiveMessagePayload =
+      input.kind === 'buttons'
+        ? {
+            kind: 'buttons',
+            body: input.bodyText,
+            header: input.headerText,
+            footer: input.footerText,
+            buttons: input.buttons,
+          }
+        : {
+            kind: 'list',
+            body: input.bodyText,
+            header: input.headerText,
+            footer: input.footerText,
+            button_label: input.buttonLabel,
+            sections: input.sections,
+          }
+    const r = await send.sendInteractive({ to: phone, payload })
     return r.messageId
   }
 
-  // Same phone-variant retry as automations/meta-send.ts. Numbers
-  // registered with/without a trunk 0 + Meta's sandbox quirks all
+  // Same phone-variant retry as automations/whatsapp-send.ts. Numbers
+  // registered with/without a trunk 0 + provider quirks all
   // need this to reliably land a message.
   const variants = sendTargets
   let workingPhone = sanitized
@@ -420,7 +405,7 @@ async function sendInteractiveViaMeta(
     status: 'sent',
   })
   if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+    throw new Error(`sent but DB insert failed: ${msgErr.message}`)
   }
 
   await db
