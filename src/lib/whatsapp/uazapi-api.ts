@@ -300,6 +300,59 @@ export async function getGroupInfo(args: GetGroupInfoArgs): Promise<GroupInfo> {
 }
 
 // ============================================================
+// Inbound media
+// ============================================================
+
+export interface DownloadMessageMediaArgs {
+  instanceToken: string;
+  /** UAZAPI's `messageid` (not the prefixed `id`). */
+  messageId: string;
+}
+
+export interface DownloadedMedia {
+  /** Public URL UAZAPI serves the decrypted file from. */
+  fileURL: string;
+  mimetype: string;
+}
+
+/**
+ * Resolve an inbound media message to a downloadable file.
+ *
+ * Inbound webhook payloads do NOT carry a usable `fileURL` — the media
+ * sits encrypted on WhatsApp's CDN and only this endpoint decrypts it
+ * and republishes it. Without this call an inbound image or voice note
+ * has no retrievable bytes at all.
+ *
+ * `generate_mp3: false` keeps voice notes as OGG/Opus, which is what
+ * WhatsApp sent and what the chat-media bucket accepts; letting UAZAPI
+ * transcode to MP3 would only add a lossy re-encode.
+ */
+export async function downloadMessageMedia(
+  args: DownloadMessageMediaArgs
+): Promise<DownloadedMedia> {
+  const { instanceToken, messageId } = args;
+  const response = await fetch(`${requireBaseUrl()}/message/download`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', token: instanceToken },
+    body: JSON.stringify({
+      id: messageId,
+      return_link: true,
+      return_base64: false,
+      generate_mp3: false,
+    }),
+  });
+  if (!response.ok) {
+    await throwUazapiError(response, `UAZAPI error: ${response.status}`);
+  }
+  const data = (await response.json()) as Partial<DownloadedMedia>;
+  if (!data.fileURL) throw new Error('UAZAPI returned no fileURL for the media.');
+  return {
+    fileURL: data.fileURL,
+    mimetype: data.mimetype || 'application/octet-stream',
+  };
+}
+
+// ============================================================
 // Interactive menus (reply buttons / selectable lists)
 // ============================================================
 

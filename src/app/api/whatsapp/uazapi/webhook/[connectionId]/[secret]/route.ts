@@ -3,7 +3,8 @@ import crypto from 'crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
-import { getGroupInfo } from '@/lib/whatsapp/uazapi-api';
+import { getGroupInfo, downloadMessageMedia } from '@/lib/whatsapp/uazapi-api';
+import { persistInboundMedia } from '@/lib/whatsapp/inbound-media';
 import {
   processInboundMessage,
   type NormalizedInboundMessage,
@@ -46,7 +47,15 @@ interface UazapiMessage {
   quoted?: string;
   reaction?: string;
   buttonOrListid?: string;
+  /**
+   * Present on messages UAZAPI has already materialised a file for.
+   * Inbound deliveries generally arrive WITHOUT it — the bytes are
+   * still encrypted on WhatsApp's CDN — which is what
+   * `downloadMessageMedia` exists to resolve.
+   */
   fileURL?: string;
+  /** Suggested file name, documents only. */
+  docName?: string;
   wasSentByApi?: boolean;
   /** True for messages posted in a WhatsApp group rather than a 1:1 chat. */
   isGroup?: boolean;
@@ -58,7 +67,52 @@ interface UazapiWebhookBody {
   messages?: UazapiMessage[];
 }
 
-const MEDIA_TYPES = new Set(['image', 'video', 'document', 'audio']);
+type NormalizedContentType = NormalizedInboundMessage['contentType'];
+
+/**
+ * Map UAZAPI's `messageType` onto our `content_type`.
+ *
+ * UAZAPI reports WhatsApp's raw protocol names — PascalCase with a
+ * `Message` suffix (`ImageMessage`, `AudioMessage`, `Conversation`,
+ * `ExtendedTextMessage`). An earlier version compared those against
+ * lowercase bare words (`image`, `audio`), so nothing ever matched:
+ * every inbound photo and voice note was filed as plain text with no
+ * media URL, which is why they never appeared in the thread.
+ *
+ * Normalising (lowercase, drop the `message` suffix) accepts both that
+ * shape and a bare `image`/`audio`, so a provider change in either
+ * direction keeps working.
+ */
+function mapContentType(rawType: string | undefined): NormalizedContentType {
+  const key = (rawType ?? '').toLowerCase().replace(/message$/, '');
+  switch (key) {
+    case 'image':
+    // Stickers are images as far as rendering and storage go.
+    case 'sticker':
+      return 'image';
+    case 'video':
+    // Push-to-video (round video note).
+    case 'ptv':
+      return 'video';
+    case 'audio':
+    // Push-to-talk (voice note).
+    case 'ptt':
+      return 'audio';
+    case 'document':
+      return 'document';
+    case 'location':
+      return 'location';
+    default:
+      return 'text';
+  }
+}
+
+const MEDIA_CONTENT_TYPES = new Set<NormalizedContentType>([
+  'image',
+  'video',
+  'document',
+  'audio',
+]);
 
 function jidToPhone(jid: string | undefined): string | null {
   if (!jid) return null;
@@ -130,12 +184,7 @@ function toNormalizedMessage(msg: UazapiMessage): NormalizedInboundMessage | nul
     };
   }
 
-  const rawType = msg.messageType || 'text';
-  const contentType: NormalizedInboundMessage['contentType'] = MEDIA_TYPES.has(rawType)
-    ? (rawType as NormalizedInboundMessage['contentType'])
-    : rawType === 'location'
-      ? 'location'
-      : 'text';
+  const contentType = mapContentType(msg.messageType);
 
   return {
     providerMessageId: msg.messageid,
@@ -144,11 +193,9 @@ function toNormalizedMessage(msg: UazapiMessage): NormalizedInboundMessage | nul
     timestamp,
     contentType,
     contentText: msg.text || null,
-    // `fileURL` per the UAZAPI schema is "URL ou referência de arquivo"
-    // — if it turns out not to be a stable public URL in practice, this
-    // needs a download-and-proxy step mirroring the Meta media route
-    // (POST /message/download exists on UAZAPI for that case).
-    mediaUrl: MEDIA_TYPES.has(contentType) ? msg.fileURL || null : null,
+    // Resolved separately by the caller, which has the instance token
+    // needed to fetch the file (see resolveMediaUrl).
+    mediaUrl: null,
     interactiveReplyId: msg.buttonOrListid || null,
     replyToProviderId: msg.quoted || null,
     reaction: null,
@@ -230,6 +277,35 @@ export async function POST(
             JSON.stringify(msg).slice(0, 2000)
           );
           continue;
+        }
+
+        // Media arrives as a reference, not a file: the bytes are still
+        // encrypted on WhatsApp's CDN until /message/download decrypts
+        // and republishes them. Resolve here (the token lives on this
+        // route) and copy into Storage so the attachment outlives the
+        // provider's retention. Failure downgrades the message to its
+        // caption rather than dropping it.
+        if (MEDIA_CONTENT_TYPES.has(normalized.contentType)) {
+          try {
+            const instanceToken = decrypt(config.uazapi_instance_token);
+            const file = await downloadMessageMedia({
+              instanceToken,
+              messageId: normalized.providerMessageId,
+            });
+            normalized.mediaUrl = await persistInboundMedia({
+              db: supabaseAdmin(),
+              accountId: config.account_id,
+              sourceUrl: file.fileURL,
+              mimetype: file.mimetype,
+              fileName: msg.docName ?? null,
+            });
+          } catch (err) {
+            console.error(
+              '[uazapi-webhook] could not resolve media for',
+              normalized.providerMessageId,
+              err instanceof Error ? err.message : err
+            );
+          }
         }
 
         await processInboundMessage(normalized, {

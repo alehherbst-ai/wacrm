@@ -6,6 +6,24 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-04] Imagens e áudios recebidos não apareciam no inbox
+
+**Antes:** toda mídia recebida pelo WhatsApp sumia — nem imagem, nem áudio, nem figurinha apareciam na conversa. Duas causas empilhadas:
+
+1. **Tipo nunca reconhecido.** A UAZAPI reporta os nomes crus do protocolo do WhatsApp, em PascalCase com sufixo: `ImageMessage`, `AudioMessage`, `StickerMessage`, `Conversation`, `ExtendedTextMessage`. O normalizador do webhook comparava com palavras minúsculas (`image`, `audio`) — **nunca casava**. Toda mídia era arquivada como texto simples, sem URL.
+2. **O arquivo nem estava disponível.** Mesmo com o tipo certo, o campo `fileURL` vem **vazio** nas mensagens recebidas: os bytes continuam criptografados no CDN do WhatsApp. Só o endpoint `POST /message/download` descriptografa e republica o arquivo. Nada no código chamava isso.
+
+**Depois:**
+- `mapContentType` normaliza o tipo (minúsculas + remove o sufixo `message`), então aceita tanto `ImageMessage` quanto um eventual `image` — resiste a mudança do provedor nos dois sentidos. Figurinha vira imagem; `ptt` (áudio de voz) vira áudio; `ptv` (vídeo redondo) vira vídeo.
+- Novo `downloadMessageMedia` (`uazapi-api.ts`) resolve o arquivo pelo `/message/download`, pedindo `generate_mp3: false` para manter o áudio de voz em OGG/Opus — formato que o WhatsApp mandou e que o bucket aceita, evitando um reencode com perda.
+- Novo `inbound-media.ts` copia os bytes para o bucket `chat-media` do Supabase (o mesmo que o envio já usa) e grava a **URL do Supabase** na mensagem, não a da UAZAPI. Guardar o link do provedor funcionaria hoje e apodreceria amanhã: é disco deles, fora do nosso controle de retenção, e sumir levaria junto as imagens do histórico. Se qualquer etapa falhar (MIME recusado, arquivo grande, Storage fora), cai de volta no link do provedor em vez de perder o anexo — nunca lança.
+- O `content-type` real da resposta tem precedência sobre o MIME que a UAZAPI reporta: numa figurinha o provedor dizia `image/webp` mas o arquivo era `image/jpeg`, e é contra o valor real que o bucket valida.
+
+**Resolvido:** mídia recebida agora aparece e é baixável. Verificado ponta a ponta contra a instância real (download → bytes → upload → URL pública 200) e **11 mídias que já haviam chegado foram recuperadas** em produção, cruzando o histórico da UAZAPI com as mensagens já gravadas.
+
+Arquivos: `src/app/api/whatsapp/uazapi/webhook/[connectionId]/[secret]/route.ts`,
+`src/lib/whatsapp/uazapi-api.ts`, `src/lib/whatsapp/inbound-media.ts` (novo)
+
 ## [2026-08-04] Envio quebrado por LID gravado como telefone; Tags e Negócios não editáveis na conversa
 
 **Antes:**
