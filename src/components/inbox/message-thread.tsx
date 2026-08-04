@@ -44,6 +44,7 @@ import {
   type SendMediaPayload,
 } from "./message-composer";
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
+import { rowsEqual } from "@/lib/inbox/rows-equal";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
@@ -225,6 +226,19 @@ export function MessageThread({
     onMessagesLoadedRef.current = onMessagesLoaded;
   });
 
+  // What's currently on screen, readable from inside the async fetch.
+  // The safety-net refetch compares against this so an unchanged result
+  // doesn't replace state — see the fetch effect below.
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  });
+
+  // Which conversation the thread has already loaded. Distinguishes
+  // "the agent picked a different chat" (blank and show a spinner) from
+  // "the 30s safety net fired" (refetch silently).
+  const loadedConversationIdRef = useRef<string | null>(null);
+
   const conversationId = conversation?.id;
   const hasUnread = (conversation?.unread_count ?? 0) > 0;
 
@@ -239,7 +253,14 @@ export function MessageThread({
     let cancelled = false;
 
     (async () => {
-      setLoading(true);
+      // Blank the thread only when the agent actually switched chats.
+      // This effect also re-runs on every `resyncToken` bump — the 30s
+      // stale-socket safety net, tab refocus, WS reconnect — and
+      // showing the spinner there wiped the conversation the agent was
+      // reading and redrew it a moment later, several times a minute.
+      const isConversationSwitch =
+        loadedConversationIdRef.current !== conversationId;
+      if (isConversationSwitch) setLoading(true);
 
       const { data, error } = await supabase
         .from("messages")
@@ -252,7 +273,16 @@ export function MessageThread({
       if (error) {
         console.error("Failed to fetch messages:", error);
       } else {
-        onMessagesLoadedRef.current(data ?? []);
+        const rows = data ?? [];
+        // A safety-net refetch almost always returns exactly what is
+        // already rendered. Handing that back as a fresh array would
+        // re-render the thread and, worse, re-fire the effect that
+        // watches `messages` and scrolls to the bottom — yanking the
+        // agent out of the history they were scrolled back through.
+        if (isConversationSwitch || !rowsEqual(rows, messagesRef.current)) {
+          onMessagesLoadedRef.current(rows);
+        }
+        loadedConversationIdRef.current = conversationId;
       }
 
       if (!cancelled) setLoading(false);
@@ -289,7 +319,11 @@ export function MessageThread({
         console.error("Failed to fetch reactions:", error);
         return;
       }
-      setReactions((data as MessageReaction[]) ?? []);
+      const rows = (data as MessageReaction[]) ?? [];
+      // Same reasoning as the messages fetch: this re-runs on every
+      // resync, and swapping in an identical array just re-renders
+      // every bubble's reaction row for nothing.
+      setReactions((prev) => (rowsEqual(rows, prev) ? prev : rows));
     })();
 
     return () => {

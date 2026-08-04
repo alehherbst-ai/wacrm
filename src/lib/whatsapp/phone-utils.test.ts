@@ -5,6 +5,7 @@ import {
   normalizePhone,
   phoneVariants,
   phonesMatch,
+  resolveSendTarget,
   sanitizePhoneForMeta,
 } from "./phone-utils";
 
@@ -160,5 +161,48 @@ describe("isRecipientNotAllowedError", () => {
       false,
     );
     expect(isRecipientNotAllowedError("")).toBe(false);
+  });
+});
+
+describe("resolveSendTarget", () => {
+  it("tags a modern numeric group id with the group suffix", () => {
+    expect(resolveSendTarget("120363407113511892", true)).toEqual([
+      "120363407113511892@g.us",
+    ]);
+  });
+
+  /**
+   * Groups created before WhatsApp's numeric ids are shaped
+   * `<creator>-<createdAt>`. This used to run through the phone
+   * normalizer, which welded it into `5548996810011474926097` — an id
+   * no group has, so replies went to a chat that does not exist and
+   * the profile-picture lookup came back empty. Verified against the
+   * live provider: the stripped form returns a nameless empty chat,
+   * the hyphenated one returns the real group.
+   */
+  it("keeps the hyphen in a legacy group id", () => {
+    expect(resolveSendTarget("554899681001-1474926097", true)).toEqual([
+      "554899681001-1474926097@g.us",
+    ]);
+  });
+
+  it("drops characters that cannot appear in a group id", () => {
+    expect(resolveSendTarget(" 554899681001-1474926097 ", true)).toEqual([
+      "554899681001-1474926097@g.us",
+    ]);
+  });
+
+  it("returns nothing sendable for an empty group id", () => {
+    expect(resolveSendTarget("", true)).toEqual([]);
+  });
+
+  it("still normalizes and varies a real phone number", () => {
+    const targets = resolveSendTarget("+55 48 96274914", false);
+    expect(targets[0]).toBe("554896274914");
+    expect(targets.every((t) => !t.includes("@"))).toBe(true);
+  });
+
+  it("returns nothing sendable for a phone that is not E.164-like", () => {
+    expect(resolveSendTarget("abc", false)).toEqual([]);
   });
 });

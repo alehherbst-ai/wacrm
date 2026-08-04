@@ -7,6 +7,7 @@ import {
   matchesContactFilters,
   normalizeConversations,
 } from "@/lib/inbox/conversations";
+import { rowsEqual } from "@/lib/inbox/rows-equal";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
 import { Search, ChevronDown, X, Users, CheckCheck } from "lucide-react";
@@ -105,6 +106,13 @@ export function ConversationList({
     onConversationsLoadedRef.current = onConversationsLoaded;
   });
 
+  // What's currently listed, readable from inside the async fetch so a
+  // resync that changes nothing can skip the state update entirely.
+  const conversationsRef = useRef(conversations);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  });
+
   useEffect(() => {
     const supabase = createClient();
     let cancelled = false;
@@ -129,7 +137,14 @@ export function ConversationList({
         return;
       }
 
-      onConversationsLoadedRef.current(normalizeConversations(data ?? []));
+      const rows = normalizeConversations(data ?? []);
+      // The safety-net refetch below runs every 30s and almost always
+      // returns exactly what is already listed. Pushing that back up as
+      // a fresh array re-renders every row for nothing; only hand over
+      // a result that actually differs.
+      if (!rowsEqual(rows, conversationsRef.current)) {
+        onConversationsLoadedRef.current(rows);
+      }
       setLoading(false);
     })();
 

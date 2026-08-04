@@ -6,6 +6,52 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-04] Hífen dos IDs de grupo legados destruído; repique da tela do inbox a cada 30s
+
+Dois problemas independentes.
+
+### 1. Grupos antigos com ID corrompido (foto faltando — e envio quebrado)
+
+**Antes:** o grupo "AZALEIA RESIDENCIAL" não importava a foto. A causa não era a foto: o **ID do grupo estava corrompido no banco**.
+
+Grupos criados antes dos IDs numéricos do WhatsApp têm o formato `<criador>-<criado_em>` — `554899681001-1474926097@g.us`. O webhook passava a parte local do JID pelo normalizador de telefone, que remove tudo que não é dígito, soldando o ID em `5548996810011474926097` — um ID que **nenhum grupo tem**.
+
+Comprovado contra a instância real: `/chat/details` com a forma sem hífen devolve 200 mas um chat vazio e sem nome; com o hífen devolve "AZALEIA RESIDENCIAL" e a foto. E o histórico do provedor confirma que o `chatid` que ele envia é a forma com hífen. Dos 50 grupos da conta, **29 usam esse formato legado**.
+
+Não era só cosmético: `resolveSendTarget` remontava o JID a partir desse valor, então **responder a qualquer grupo legado iria para um chat inexistente**. O nome do grupo funcionava por acidente — aquele caminho usa o `chatid` cru do webhook, não o valor armazenado.
+
+**Depois:**
+- A extração da parte local do JID passa a distinguir pessoa de grupo: telefone continua sendo reduzido a dígitos, ID de grupo é preservado inteiro (só dígitos e hífen).
+- `resolveSendTarget` deixa de normalizar IDs de grupo.
+- A busca do contato de grupo compara contra `phone_normalized` (coluna gerada, só dígitos) enquanto grava o ID inteiro em `phone` — a chave de deduplicação sai idêntica dos dois jeitos, então nada duplica.
+- Contatos gravados antes disso se **auto-corrigem** na próxima mensagem do grupo: a chave só-dígitos ainda casa, então o ID é restaurado no lugar.
+- A busca da foto de grupo passa o `chatid` do provedor direto, em vez de remontar o JID — um lugar a menos onde a remontagem pode errar.
+- Testes de regressão cobrindo ID moderno, ID legado com hífen e entradas inválidas.
+
+**Resolvido:** o grupo foi corrigido em produção (`5548996810011474926097` → `554899681001-1474926097`) e as fotos que faltavam foram importadas. **Os 8 grupos passaram a ter foto (antes 3).** Das 11 pessoas com telefone real, 3 têm foto — as demais não têm ou escondem por privacidade. Os 20 contatos com LID herdado continuam sem resolver, como esperado.
+
+### 2. A tela do inbox se apagava e redesenhava a cada 30 segundos
+
+**Antes:** a cada atualização vinda do WhatsApp a tela inteira piscava. A causa era a rede de segurança contra websocket silenciosamente travado: um `resyncToken` que dispara a cada 30s (mais a cada reconexão e cada volta de foco na aba). A cada disparo:
+
+1. a thread chamava `setLoading(true)`, **substituindo a conversa inteira por um spinner**;
+2. o resultado voltava e era gravado no estado como um array novo, **mesmo quando idêntico ao que já estava na tela**;
+3. isso reacendia o efeito que observa `messages` e **jogava a rolagem para o fim** — tirando o atendente de onde estava lendo.
+
+**Depois:**
+- O spinner só aparece quando o atendente realmente **troca de conversa**. Recarga em segundo plano é silenciosa.
+- Novo `rowsEqual` compara o resultado com o que já está renderizado e **não toca no estado quando nada mudou**. Aplicado à thread, às reações e à lista de conversas. A comparação normaliza a ordem das chaves de propósito: os dois lados vêm de origens diferentes (um `select()` REST e um `payload.new` do realtime), que trazem as mesmas colunas em ordens não necessariamente iguais — um `JSON.stringify` cru chamaria isso de diferente e a otimização não valeria nada.
+
+**Resolvido:** o inbox continua se recuperando de eventos perdidos, mas sem repintar nem perder a rolagem. A rede de segurança dos 30s foi mantida — removê-la traria de volta o "inbox não atualiza".
+
+**Verificação:** build limpo, typecheck limpo, lint 0 erros, 521 testes passando (as 5 falhas de fuso/ICU são pré-existentes).
+
+Arquivos: `src/app/api/whatsapp/uazapi/webhook/[connectionId]/[secret]/route.ts`,
+`src/lib/whatsapp/phone-utils.ts`, `src/lib/whatsapp/phone-utils.test.ts`,
+`src/lib/whatsapp/inbound-pipeline.ts`, `src/lib/inbox/rows-equal.ts` (novo),
+`src/lib/inbox/rows-equal.test.ts` (novo), `src/components/inbox/message-thread.tsx`,
+`src/components/inbox/conversation-list.tsx`
+
 ## [2026-08-04] Menu lateral recolhido por padrão, expandindo ao passar o mouse
 
 **Antes:** o menu lateral vinha aberto por padrão e recolher era uma escolha manual — quem quisesse o espaço extra precisava recolher e depois expandir toda vez que quisesse navegar.

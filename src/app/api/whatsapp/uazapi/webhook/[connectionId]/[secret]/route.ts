@@ -118,10 +118,30 @@ const MEDIA_CONTENT_TYPES = new Set<NormalizedContentType>([
   'audio',
 ]);
 
-function jidToPhone(jid: string | undefined): string | null {
+/**
+ * Extract the routable local part of a JID.
+ *
+ * For a person this is a phone number, so every non-digit is stripped.
+ *
+ * For a GROUP it is not a phone number at all and must survive intact.
+ * Groups created before WhatsApp's numeric ids are shaped
+ * `<creator>-<createdAt>` — e.g. `554899681001-1474926097@g.us` — and
+ * running that through the phone normalizer silently welded it into
+ * `5548996810011474926097`, an id no group has. Everything that later
+ * rebuilt the JID from the stored value then addressed a group that
+ * does not exist: the profile-picture lookup came back empty, and a
+ * reply to such a group would never have been delivered. Confirmed
+ * against the live instance — the stripped form returns a nameless
+ * empty chat, the hyphenated one returns the real group with its
+ * picture.
+ */
+function jidToLocalId(jid: string | undefined, isGroup: boolean): string | null {
   if (!jid) return null;
   const [local] = jid.split('@');
   if (!local) return null;
+  // Group ids are digits and hyphens only; anything else is unexpected
+  // and dropped rather than carried into a routing id.
+  if (isGroup) return local.replace(/[^0-9-]/g, '') || null;
   return normalizePhone(local);
 }
 
@@ -160,7 +180,7 @@ function toNormalizedMessage(msg: UazapiMessage): NormalizedInboundMessage | nul
     return null;
   }
 
-  const senderPhone = jidToPhone(msg.chatid);
+  const senderPhone = jidToLocalId(msg.chatid, isGroup);
   if (!senderPhone || !msg.messageid) return null;
 
   const timestamp = msg.messageTimestamp ? new Date(msg.messageTimestamp) : new Date();
@@ -326,13 +346,17 @@ export async function POST(
               : undefined,
           // `/chat/details` takes the group's full JID but a person's
           // bare phone digits, so the two cases are not interchangeable.
+          // Groups pass the provider's own `chatid` straight through
+          // rather than rebuilding it, so there is no second place that
+          // could get the reassembly wrong.
           resolveProfilePictureUrl: async () => {
             const instanceToken = decrypt(config.uazapi_instance_token);
             return getProfilePictureUrl({
               instanceToken,
-              number: normalized.isGroup
-                ? `${normalized.senderPhone}@g.us`
-                : normalized.senderPhone,
+              number:
+                normalized.isGroup && msg.chatid
+                  ? msg.chatid
+                  : normalized.senderPhone,
             });
           },
         });

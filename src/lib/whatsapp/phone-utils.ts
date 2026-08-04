@@ -100,14 +100,21 @@ export function phoneVariants(sanitized: string): string[] {
  * 038). A group id isn't a phone number — it has no trunk-prefix
  * ambiguity to retry variants for, and Meta/UAZAPI's E.164 shape
  * checks would reject it outright — so it gets a single-entry list
- * built by tagging the raw digits with `@g.us`, the group-JID suffix
+ * built by tagging the stored id with `@g.us`, the group-JID suffix
  * both providers key group routing on. Returns `[]` when nothing
  * sendable can be derived, same failure shape as an invalid phone.
+ *
+ * The group id is passed through verbatim rather than normalized.
+ * Groups predating WhatsApp's numeric ids are shaped
+ * `<creator>-<createdAt>` (e.g. `554899681001-1474926097`), and
+ * stripping that hyphen produces an id no group has — a reply would go
+ * to a chat that doesn't exist. Only characters that cannot appear in
+ * a group id are removed.
  */
 export function resolveSendTarget(phone: string, isGroup: boolean): string[] {
   if (isGroup) {
-    const digits = normalizePhone(phone)
-    return digits ? [`${digits}@g.us`] : []
+    const groupId = (phone ?? '').replace(/[^0-9-]/g, '')
+    return groupId ? [`${groupId}@g.us`] : []
   }
   const sanitized = sanitizePhoneForMeta(phone)
   return isValidE164(sanitized) ? phoneVariants(sanitized) : []

@@ -13,6 +13,7 @@
 
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
+import { normalizePhone } from '@/lib/whatsapp/phone-utils';
 import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
@@ -473,6 +474,14 @@ async function findOrCreateContact(
  * tolerate, and fuzzy-matching an 18-20 digit synthetic id risks
  * merging unrelated groups/contacts that happen to share a suffix.
  * Exact match on `phone_normalized` only.
+ *
+ * `groupPhone` is the group's id verbatim, which for a legacy group is
+ * `<creator>-<createdAt>` and DOES contain a hyphen. `phone_normalized`
+ * is a generated digits-only column (migration 022), so the lookup has
+ * to compare against the stripped form while `phone` keeps the id whole
+ * — that stored value is what replies and picture lookups rebuild the
+ * JID from, and a hyphen lost there addresses a group that doesn't
+ * exist.
  */
 async function findOrCreateGroupContact(
   accountId: string,
@@ -480,11 +489,13 @@ async function findOrCreateGroupContact(
   groupPhone: string,
   resolveGroupName?: () => Promise<string | null>
 ): Promise<ContactOutcome | null> {
+  const groupPhoneDigits = normalizePhone(groupPhone);
+
   const { data: existing, error: findError } = await supabaseAdmin()
     .from('contacts')
     .select('*')
     .eq('account_id', accountId)
-    .eq('phone_normalized', groupPhone)
+    .eq('phone_normalized', groupPhoneDigits)
     .eq('is_group', true)
     .maybeSingle();
 
@@ -493,6 +504,21 @@ async function findOrCreateGroupContact(
     return null;
   }
   if (existing) {
+    // Self-heal rows written before the hyphen was preserved: the
+    // digits-only key still matches, so the id can be restored in place
+    // without disturbing the unique index (phone_normalized is
+    // generated from phone and comes out identical either way).
+    if (existing.phone !== groupPhone) {
+      const { error: repairError } = await supabaseAdmin()
+        .from('contacts')
+        .update({ phone: groupPhone, updated_at: new Date().toISOString() })
+        .eq('id', existing.id);
+      if (repairError) {
+        console.error('[inbound-pipeline] group id repair failed:', repairError);
+      } else {
+        existing.phone = groupPhone;
+      }
+    }
     return { contact: existing, wasCreated: false };
   }
 
@@ -527,7 +553,7 @@ async function findOrCreateGroupContact(
         .from('contacts')
         .select('*')
         .eq('account_id', accountId)
-        .eq('phone_normalized', groupPhone)
+        .eq('phone_normalized', groupPhoneDigits)
         .eq('is_group', true)
         .maybeSingle();
       if (raced) return { contact: raced, wasCreated: false };
