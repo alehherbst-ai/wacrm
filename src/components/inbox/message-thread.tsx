@@ -25,6 +25,7 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
+  Users,
 } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -817,43 +818,58 @@ export function MessageThread({
               <ArrowLeft className="h-5 w-5" />
             </button>
           )}
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-            {displayName.charAt(0).toUpperCase()}
+          {/* Same avatar treatment as the conversation list: the photo
+              when we have one, the group icon for groups, initials as
+              the last resort — so the same contact looks the same in
+              both places. */}
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-sm font-medium text-foreground">
+            {contact.avatar_url ? (
+              <img
+                src={contact.avatar_url}
+                alt={displayName}
+                className="h-9 w-9 rounded-full object-cover"
+              />
+            ) : contact.is_group ? (
+              <Users className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              displayName.charAt(0).toUpperCase()
+            )}
           </div>
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
-            <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
+              {/* Tags beside the number, same chip treatment as the
+                  conversation list and the contact panel. Capped at two:
+                  the header also carries the status and assign controls,
+                  and past two chips the phone number starts losing
+                  digits. The chips shrink before the number does. */}
+              {(contact.tags ?? []).slice(0, 2).map((tag) => (
+                <span
+                  key={tag.id}
+                  title={tag.name}
+                  className="inline-flex min-w-0 max-w-24 shrink items-center rounded-full px-1.5 py-px text-[10px] font-medium"
+                  style={{
+                    backgroundColor: `${tag.color}20`,
+                    color: tag.color,
+                  }}
+                >
+                  <span className="truncate">{tag.name}</span>
+                </span>
+              ))}
+              {(contact.tags?.length ?? 0) > 2 && (
+                <span
+                  title={(contact.tags ?? []).map((tg) => tg.name).join(", ")}
+                  className="shrink-0 text-[10px] text-muted-foreground"
+                >
+                  +{(contact.tags?.length ?? 0) - 2}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Contact-panel toggle — desktop only. The contact sidebar
-              eats a chunk of horizontal width that crowds the thread on
-              smaller laptops; this lets agents reclaim it when they just
-              want to read and reply. Hidden on mobile, where the sidebar
-              never renders as a permanent panel anyway. Issue #258. */}
-          {onToggleContactPanel && (
-            <button
-              type="button"
-              onClick={onToggleContactPanel}
-              aria-label={
-                contactPanelOpen ? t("hideContactPanel") : t("showContactPanel")
-              }
-              title={contactPanelOpen ? t("hideContact") : t("showContact")}
-              aria-pressed={contactPanelOpen}
-              className={cn(
-                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
-                contactPanelOpen ? "text-primary" : "text-muted-foreground",
-              )}
-            >
-              {contactPanelOpen ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <PanelRightOpen className="h-4 w-4" />
-              )}
-            </button>
-          )}
-
           {/* Manual refresh — forces a refetch of the messages + the
               conversation list (the parent bumps its resyncToken). Useful
               when realtime missed an event or the agent just wants to be
@@ -965,6 +981,38 @@ export function MessageThread({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Contact-panel toggle — desktop only. The contact sidebar
+              eats a chunk of horizontal width that crowds the thread on
+              smaller laptops; this lets agents reclaim it when they just
+              want to read and reply. Hidden on mobile, where the sidebar
+              never renders as a permanent panel anyway. Issue #258.
+
+              Last in the row on purpose: it controls the panel to its
+              immediate right, so sitting next to it makes the button
+              point at what it toggles. Placed further left it read as
+              just another thread control. */}
+          {onToggleContactPanel && (
+            <button
+              type="button"
+              onClick={onToggleContactPanel}
+              aria-label={
+                contactPanelOpen ? t("hideContactPanel") : t("showContactPanel")
+              }
+              title={contactPanelOpen ? t("hideContact") : t("showContact")}
+              aria-pressed={contactPanelOpen}
+              className={cn(
+                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
+                contactPanelOpen ? "text-primary" : "text-muted-foreground",
+              )}
+            >
+              {contactPanelOpen ? (
+                <PanelRightClose className="h-4 w-4" />
+              ) : (
+                <PanelRightOpen className="h-4 w-4" />
+              )}
+            </button>
+          )}
         </div>
       </div>
 

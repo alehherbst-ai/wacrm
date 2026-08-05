@@ -6,6 +6,24 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-05] Cabeçalho do chat: foto, tags e botão de recolher reposicionado
+
+**Antes:** o cabeçalho da conversa mostrava só a inicial do contato num círculo cinza, não mostrava tags, e o botão de recolher o painel de informações ficava no meio dos controles da conversa (antes do atualizar, do status e do atribuir).
+
+**Depois (na ordem dos números do print):**
+
+1. **Botão de recolher foi para a extremidade direita**, encostado no painel que ele controla. Ele comanda a coluna imediatamente à direita — colado nela, o botão aponta para o que ele faz; no meio da fileira lia-se como só mais um controle da conversa.
+2. **Foto do contato no cabeçalho**, com o mesmo tratamento da lista de conversas: foto quando existe, ícone de grupo para grupos, inicial como último recurso. O mesmo contato passa a ter a mesma cara nos dois lugares.
+3. **Tags ao lado do número**, com o mesmo estilo de chip do painel e da lista. Limitadas a duas, com `+N` para o excedente — o cabeçalho ainda carrega status e atribuição, e a partir da terceira chip o telefone começa a perder dígitos. As chips encolhem antes do número.
+
+**Correção que veio junto:** `activeContact` era congelado no momento da seleção e nunca mais atualizado. Com tags e foto agora no cabeçalho, isso apareceria como dado velho — marcar uma tag no painel não mudaria nada no topo até clicar em outra conversa e voltar. A lista de conversas passa a re-hidratar o contato aberto a cada recarga. Como o `rowsEqual` já filtra recargas sem mudança, isso não custa nada quando nada mudou.
+
+Detalhe de implementação: a re-hidratação lê o id da conversa aberta por um `ref`, não chamando `setActiveContact` de dentro de um atualizador de `setActiveConversation` — atualizadores precisam ser puros, e o StrictMode os invoca duas vezes.
+
+**Verificação:** build limpo, typecheck limpo, lint 0 erros, 549 testes passando (as 5 falhas de fuso/ICU são pré-existentes). O único aviso novo é o de `<img>` do Next, o mesmo que a lista de conversas e o painel do contato já carregam para avatares.
+
+Arquivos: `src/components/inbox/message-thread.tsx`, `src/app/(dashboard)/inbox/page.tsx`
+
 ## [2026-08-05] Painel do contato não rolava
 
 **Antes:** o painel lateral do contato (tags, negócios, notas) cortava no meio e não dava para rolar até o fim. Quanto mais notas, mais conteúdo ficava inalcançável.

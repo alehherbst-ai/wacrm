@@ -120,6 +120,16 @@ function InboxPageInner() {
     knownConvIdsRef.current = next;
   }, [conversations]);
 
+  /**
+   * Which thread is open, readable from callbacks that must stay
+   * identity-stable. `handleConversationsLoaded` uses it to re-hydrate
+   * the open contact without taking `activeConversation` as a dep.
+   */
+  const activeConversationIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversation?.id ?? null;
+  }, [activeConversation]);
+
   // Pull the conversation row with its `contact` joined and merge it
   // into state. Needed because Supabase Realtime payloads only carry the
   // row's own columns — a brand-new conversation arrives without a
@@ -429,6 +439,28 @@ function InboxPageInner() {
   const handleConversationsLoaded = useCallback(
     (loaded: Conversation[]) => {
       setConversations(loaded);
+
+      // Refresh the open thread's contact from the row we just read.
+      // `activeContact` is otherwise frozen at selection time, so a tag
+      // added in the sidebar — or a profile picture that arrived with a
+      // later message — would keep showing the old values in the thread
+      // header until the agent clicked away and back. This callback only
+      // fires when the data genuinely changed (see rowsEqual in
+      // ConversationList), so it costs nothing on a no-op refetch.
+      //
+      // Read through a ref rather than calling setActiveContact inside a
+      // setActiveConversation updater: updaters must stay pure, and
+      // StrictMode double-invokes them.
+      const openId = activeConversationIdRef.current;
+      if (openId) {
+        const fresh = loaded.find((c) => c.id === openId);
+        if (fresh?.contact) {
+          setActiveContact(fresh.contact);
+          setActiveConversation((prev) =>
+            prev ? { ...prev, contact: fresh.contact } : prev,
+          );
+        }
+      }
       // Resolve a pending deep-link here rather than in an effect — this
       // is an event handler, so the setState calls below are allowed by
       // react-hooks/set-state-in-effect. Runs once per ?c=<id> URL value
