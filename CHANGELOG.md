@@ -5,9 +5,93 @@ check this file for any **migration required** notes and apply the
 matching SQL files from `supabase/migrations/` against your Supabase
 project before restarting the app.
 
-Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
-and polish.
+Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+and semantic versioning: `MAJOR` for breaking changes, `MINOR` for new
+modules, `PATCH` for fixes and polish.
+
+## [2.0.0] — 2026-08-05
+
+**WhatsApp now connects by QR code, not by Meta.** The official Cloud
+API integration is gone; the app talks to UAZAPI only. Alongside that,
+this release adds group chats, inbound media, contact photos, an
+activities module with a calendar and a board, and a substantial inbox
+rework.
+
+> **Migration required:** apply, in order,
+> `037_uazapi_provider.sql`, `038_group_chats.sql`,
+> `039_contact_avatars.sql`, `040_conversation_archive.sql`,
+> `041_activities.sql` and `042_activity_notifications.sql`.
+
+> **Restoring the previous architecture.** The last commit with the
+> Meta integration intact is tagged
+> `marco/arquitetura-multi-provedor-meta-uazapi`, mirrored on the
+> `legacy/meta-multiprovedor` branch:
+> `git switch -c restaura-meta marco/arquitetura-multi-provedor-meta-uazapi`
+
+### Removed
+
+- **The Meta WhatsApp Cloud API.** The provider abstraction, the Graph
+  API client, number registration, HMAC webhook verification and the
+  authenticated media proxy are all deleted. Connecting a number is now
+  scanning a QR code in Settings.
+- **Message Templates and Broadcasts.** Both existed to satisfy Meta's
+  approval and 24-hour-window rules, which no longer apply. Their tables
+  are deliberately left in place — dropping them would destroy data a Git
+  tag cannot restore.
+- **The 24-hour session window.** A Meta policy, not a WhatsApp one. The
+  composer is always enabled.
+
+### Added
+
+- **Group chats.** Messages from a WhatsApp group land in one thread
+  instead of fragmenting into a fake 1:1 per participant, with the real
+  group name and the sender's name on each message.
+- **Inbound media.** Photos, videos, documents and voice notes are
+  fetched, stored in Supabase Storage and rendered in the thread. Stored
+  rather than hot-linked: the provider's links expire.
+- **Contact and group profile pictures**, imported on the first message
+  and refreshed weekly. Also copied into Storage — WhatsApp's picture
+  URLs are signed and expire in about ten days.
+- **Activities.** Tasks with a deadline, attached to a contact or
+  standalone, shown as a Kanban board (overdue / today / tomorrow / next
+  3 days / later) and a day-week-month calendar. Overdue work is called
+  out in red.
+- **Activity notifications** for assignment, due-today and overdue,
+  surfaced through a bell in the header.
+- **Start a conversation from a phone number.** The number is validated
+  against WhatsApp before anything is written, so a typo can't leave a
+  dead contact behind.
+- **Interactive messages** (reply buttons and selectable lists) sent
+  natively through UAZAPI, so Flows and Automations keep their
+  interactive nodes.
+- **Brazilian Portuguese**, and it is now the default locale.
+
+### Changed
+
+- **Inbox.** Contacts and Groups tabs; contact tags shown next to the
+  name in both the list and the thread header; "Clear inbox" now archives
+  threads (a new inbound message brings them back with their history);
+  a collapsible sidebar that expands on hover.
+- **Deals** can be edited from the contact panel, and values render with
+  the currency's real symbol.
+
+### Fixed
+
+- **Replies were undeliverable** because WhatsApp's opaque per-contact
+  LID was being stored as the phone number.
+- **Legacy group ids lost their hyphen** to the phone normalizer,
+  addressing a group that does not exist — which broke both replies and
+  picture lookups for every group created before WhatsApp's numeric ids.
+- **The webhook registered itself disabled.** UAZAPI defaults `enabled`
+  to false and the request still returns 200, so messages were silently
+  never delivered.
+- **The inbox blanked and redrew every 30 seconds**, losing scroll
+  position, because the stale-socket safety net replaced state even when
+  nothing had changed.
+- **Interactive replies arrived empty** — the tapped label travels in
+  `vote`, not `text`.
+- **Buttons showed no pointer cursor** (a Tailwind v4 Preflight change),
+  and the contact panel could not be scrolled.
 
 ## [0.8.1] — 2026-07-10
 
