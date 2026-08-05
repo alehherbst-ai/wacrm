@@ -130,6 +130,10 @@
     },
     "conversationList": {
       "searchPlaceholder": "대화 검색...",
+      "audienceTabs": "대화 유형",
+      "tabAll": "전체",
+      "tabContacts": "연락처",
+      "tabGroups": "그룹",
       "filterAll": "전체",
       "filterUnread": "읽지 않음",
       "filterOpen": "열림",

@@ -55,6 +55,13 @@ const STATUS_COLORS: Record<ConversationStatus, string> = {
 
 type InboxFilter = ConversationStatus | "all" | "unread";
 
+/**
+ * Audience tabs — people vs groups. Orthogonal to the status filter on
+ * purpose: "unread groups" and "open 1:1s" are both real workflows, so
+ * the two compose instead of one replacing the other.
+ */
+type InboxAudience = "all" | "people" | "groups";
+
 export function ConversationList({
   activeConversationId,
   onSelect,
@@ -80,6 +87,7 @@ export function ConversationList({
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
+  const [audience, setAudience] = useState<InboxAudience>("all");
   const [loading, setLoading] = useState(true);
   const [clearingInbox, setClearingInbox] = useState(false);
   // Contact-based filters (issue #272). Tags use OR logic (a conversation
@@ -191,6 +199,16 @@ export function ConversationList({
   const filtered = useMemo(() => {
     let result = conversations;
 
+    if (audience !== "all") {
+      // `is_group` is nullable on old rows — treat absent as "person",
+      // which is what every pre-038 contact actually is.
+      result = result.filter((c) =>
+        audience === "groups"
+          ? c.contact?.is_group === true
+          : c.contact?.is_group !== true
+      );
+    }
+
     if (filter === "unread") {
       result = result.filter((c) => c.unread_count > 0);
     } else if (filter !== "all") {
@@ -235,7 +253,7 @@ export function ConversationList({
       if (!bt) return -1;
       return new Date(bt).getTime() - new Date(at).getTime();
     });
-  }, [conversations, filter, search, selectedTagIds, selectedCompany]);
+  }, [conversations, audience, filter, search, selectedTagIds, selectedCompany]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -319,6 +337,39 @@ export function ConversationList({
     <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
       {/* Search + Filter */}
       <div className="space-y-2 border-b border-border p-3">
+        {/* Audience tabs — people vs groups. A segmented control rather
+            than another dropdown: it's a two-way split the user flips
+            constantly, so it earns permanent one-tap real estate where
+            the status filter (five options, occasional use) does not. */}
+        <div
+          role="tablist"
+          aria-label={t("audienceTabs")}
+          className="flex rounded-lg bg-muted p-0.5"
+        >
+          {(
+            [
+              { value: "all", label: t("tabAll") },
+              { value: "people", label: t("tabContacts") },
+              { value: "groups", label: t("tabGroups") },
+            ] as { value: InboxAudience; label: string }[]
+          ).map((tab) => (
+            <button
+              key={tab.value}
+              role="tab"
+              aria-selected={audience === tab.value}
+              onClick={() => setAudience(tab.value)}
+              className={cn(
+                "flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                audience === tab.value
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -543,6 +594,14 @@ interface ConversationItemProps {
   t: ReturnType<typeof useTranslations>;
 }
 
+/**
+ * How many of the contact's tags render inline next to the name. The
+ * row is ~320px shared with the timestamp; beyond two chips the name
+ * itself truncates into uselessness, so the rest collapses to "+N"
+ * (full list visible in the contact sidebar).
+ */
+const MAX_INLINE_TAGS = 2;
+
 function ConversationItem({
   conversation,
   isActive,
@@ -552,6 +611,9 @@ function ConversationItem({
   const contact = conversation.contact;
   const displayName = contact?.name || contact?.phone || t("unknown");
   const initials = displayName.charAt(0).toUpperCase();
+  const contactTags = contact?.tags ?? [];
+  const inlineTags = contactTags.slice(0, MAX_INLINE_TAGS);
+  const overflowTags = contactTags.length - inlineTags.length;
 
   const handleClick = useCallback(() => {
     onSelect(conversation);
@@ -589,8 +651,36 @@ function ConversationItem({
       {/* Content */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-medium text-foreground">
-            {displayName}
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-sm font-medium text-foreground">
+              {displayName}
+            </span>
+            {/* Contact tags, same chip treatment as the contact
+                sidebar (`${color}20` wash + coloured text) so a tag
+                reads identically in both places. Capped at two — the
+                name keeps priority over the chips when space runs out
+                (chips can shrink and truncate, the "+N" never does). */}
+            {inlineTags.map((tag) => (
+              <span
+                key={tag.id}
+                title={tag.name}
+                className="inline-flex min-w-0 max-w-20 shrink items-center rounded-full px-1.5 py-px text-[10px] font-medium"
+                style={{
+                  backgroundColor: `${tag.color}20`,
+                  color: tag.color,
+                }}
+              >
+                <span className="truncate">{tag.name}</span>
+              </span>
+            ))}
+            {overflowTags > 0 && (
+              <span
+                title={contactTags.map((tg) => tg.name).join(", ")}
+                className="shrink-0 text-[10px] text-muted-foreground"
+              >
+                +{overflowTags}
+              </span>
+            )}
           </span>
           <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
         </div>

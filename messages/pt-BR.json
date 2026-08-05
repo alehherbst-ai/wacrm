@@ -130,6 +130,10 @@
     },
     "conversationList": {
       "searchPlaceholder": "Buscar conversas...",
+      "audienceTabs": "Tipo de conversa",
+      "tabAll": "Todas",
+      "tabContacts": "Contatos",
+      "tabGroups": "Grupos",
       "filterAll": "Todas",
       "filterUnread": "Não lidas",
       "filterOpen": "Abertas",

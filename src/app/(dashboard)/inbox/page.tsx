@@ -673,7 +673,13 @@ function InboxPageInner() {
             toggle — which is itself desktop-only — never affects it. */}
         {contactPanelOpen && (
           <div className="hidden lg:block">
-            <ContactSidebar contact={activeContact} />
+            {/* Tag writes hit `contact_tags`, which nothing subscribes
+                to — reuse the resync so the chips beside the name in
+                the conversation list update straight away. */}
+            <ContactSidebar
+              contact={activeContact}
+              onTagsChanged={handleManualRefresh}
+            />
           </div>
         )}
       </div>

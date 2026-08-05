@@ -41,9 +41,17 @@ import { toast } from "sonner";
 
 interface ContactSidebarProps {
   contact: Contact | null;
+  /**
+   * Fired after a tag is added or removed here. The conversation list
+   * shows those tags next to the name, but realtime only carries
+   * `messages` and `conversations` — a write to `contact_tags` reaches
+   * no subscriber. Without this the chip would sit invisible until the
+   * 30s safety-net refetch happened to run.
+   */
+  onTagsChanged?: () => void;
 }
 
-export function ContactSidebar({ contact }: ContactSidebarProps) {
+export function ContactSidebar({ contact, onTagsChanged }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
 
@@ -171,6 +179,9 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           setTags((prev) => [...prev, { ...tag, contact_tag_id: `tmp-${tag.id}` }]);
           void fetchContactData();
         }
+        // Let the inbox list pick the change up — it renders these same
+        // tags beside the conversation name.
+        onTagsChanged?.();
       } catch (err) {
         toast.error(
           err instanceof Error ? err.message : tSidebar("tagUpdateError"),
@@ -179,7 +190,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         setPendingTagId(null);
       }
     },
-    [contact, tagIdsOnContact, fetchContactData, tSidebar],
+    [contact, tagIdsOnContact, fetchContactData, onTagsChanged, tSidebar],
   );
 
   const handleAddNote = useCallback(async () => {

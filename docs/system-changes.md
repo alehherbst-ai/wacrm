@@ -6,6 +6,26 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-04] Abas de Contatos/Grupos e tags visíveis na caixa de entrada
+
+**Antes:** a caixa de entrada misturava conversas individuais e grupos numa lista só, sem como separar. E as tags de um contato só existiam no painel lateral — para saber se uma conversa estava marcada era preciso abri-la.
+
+**Depois:**
+- **Abas Todas / Contatos / Grupos** no topo da lista. Escolhi um controle segmentado, não mais um menu suspenso: é uma divisão de duas vias que o atendente alterna o tempo todo, então ganha espaço permanente de um toque — ao contrário do filtro de status, que tem cinco opções e uso ocasional.
+- A aba é **ortogonal ao filtro de status** e às tags, não substitui. "Grupos não lidos" e "conversas individuais abertas" são fluxos reais, então os filtros se compõem.
+- Grupos são identificados por `contact.is_group`, tratando ausente como pessoa — é o que todo contato anterior à migration 038 de fato é, e evita que linhas antigas sumam das duas abas.
+- **Tags aparecem ao lado do nome** em cada linha, com o mesmo tratamento visual do painel do contato (fundo lavado na cor da tag + texto na cor), para que uma tag seja reconhecível igual nos dois lugares.
+- Limite de **duas tags inline**, com o excedente virando `+N` (lista completa no `title` e no painel). A linha tem ~320px compartilhados com o horário; além disso o nome truncava até virar inútil. As chips encolhem antes do nome, e o `+N` nunca encolhe.
+- **Marcar uma tag reflete na lista na hora.** O realtime só carrega `messages` e `conversations` — uma escrita em `contact_tags` não chega a assinante nenhum, então a chip ficaria invisível até o resync de 30s cair. O painel agora avisa o inbox, reaproveitando o mesmo resync que já existia em vez de criar um segundo caminho.
+
+**Resolvido:** os dois pedidos. Conferido contra os dados reais: 8 grupos + 31 contatos = 39 conversas (a soma fecha, nenhuma linha cai fora das abas), e o contato com duas tags renderiza as duas inline.
+
+**Verificação:** build limpo, typecheck limpo, lint 0 erros, teste de paridade de i18n passando, 521 testes passando (as 5 falhas de fuso/ICU são pré-existentes).
+
+Arquivos: `src/components/inbox/conversation-list.tsx`,
+`src/components/inbox/contact-sidebar.tsx`, `src/app/(dashboard)/inbox/page.tsx`,
+`messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-04] Hífen dos IDs de grupo legados destruído; repique da tela do inbox a cada 30s
 
 Dois problemas independentes.
