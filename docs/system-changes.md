@@ -6,6 +6,46 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-05] Sino de notificações no topo, com alertas de atividades
+
+> **Requer migration.** `supabase/migrations/042_activity_notifications.sql`.
+> Ela renomeia uma coluna, adiciona outra, estende os tipos de notificação, cria o
+> gatilho de atribuição e **substitui a assinatura** de `notify_due_activities()`.
+> Enquanto não for aplicada, a varredura falha com aviso no console (sem quebrar nada).
+
+**Antes:** o sino ficava no menu lateral esquerdo com um contador numérico, e a única notificação que existia era "conversa atribuída".
+
+**Depois:**
+
+**Sino no canto superior direito**, junto dos outros controles de conta, reduzido a um ícone. Quando há algo não lido aparece uma **bolinha vermelha** sobre ele. Troquei o contador numérico pela bolinha de propósito: o número exato nunca foi o ponto — o que importa é "tem algo esperando por mim" contra "não tem", e a bolinha diz isso mais rápido. A bolinha tem um anel na cor do fundo do cabeçalho para continuar legível onde encosta no contorno do sino.
+
+**Três momentos de notificação para atividades**, em vez do alerta único da 041:
+
+| Tipo | Quando dispara |
+|---|---|
+| Atividade atribuída | Alguém te atribui uma atividade (gatilho, imediato) |
+| Atividade para hoje | A atividade cai no dia de hoje |
+| Atividade vencida | O prazo passou e ela continua em aberto |
+
+- **Por que três marcações em vez de uma flag:** cada uma dispara em momento diferente e cada uma deve disparar no máximo uma vez. Um único `notified_at` não consegue expressar "já avisei que é para hoje, ainda não avisei que atrasou".
+- **Vencida é avaliada primeiro e consome a marcação de "hoje".** Uma tarefa das 9h que ninguém viu até as 14h deve tocar **uma vez, como atrasada** — não duas, como "é hoje" seguido de "venceu".
+- **A atribuição pula auto-atribuição**, igual ao gatilho de conversas: "lembrar a mim mesmo" é o caso comum, e ser avisado de um trabalho que você acabou de se dar é ruído.
+- **Só o vencido ganha cor.** É a única coisa ali que já está custando algo. E ele mantém o vermelho mesmo depois de lido — o prazo continua perdido, e apagá-lo junto com o resto enterraria justamente a linha que precisa de ação.
+
+**Fuso horário.** "Hoje" é uma propriedade de quem lê, não do servidor. O aviso precisa chegar quando o dia do atendente começa, e a meia-noite de um atendente brasileiro é 03:00 UTC. Por isso a varredura passou a **receber os limites do dia do próprio navegador** em vez de derivá-los do `NOW()`, que mandaria o aviso três horas fora.
+
+**A página de notificações foi traduzida.** Ela estava inteiramente em inglês fixo, sem namespace de i18n nenhum — o que passava batido enquanto era um recurso secundário, mas não agora que ela é o centro do fluxo de atividades. O rótulo do tipo é renderizado traduzido na hora, não congelado em inglês no banco como faz o gatilho da migration 027.
+
+**Verificação:** build limpo, typecheck limpo, lint 0 erros, paridade de i18n nos três idiomas, 549 testes passando (as 5 falhas de fuso/ICU são pré-existentes).
+
+Ao investigar, confirmei que a varredura da 041 **não** tinha defeito: das 3 atividades existentes, duas estavam concluídas e a terceira vencia 6 segundos depois da consulta. Não havia o que disparar.
+
+**Não verificado ao vivo:** a 042 ainda não foi aplicada, então o gatilho e a nova varredura não foram exercitados contra o banco.
+
+Arquivos: `supabase/migrations/042_activity_notifications.sql` (novo),
+`src/components/layout/{header,sidebar}.tsx`, `src/app/(dashboard)/notifications/page.tsx`,
+`src/hooks/use-due-activity-sweep.ts`, `src/types/index.ts`, `messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-05] Cursor de mão em tudo que é clicável
 
 **Antes:** botões mostravam a seta comum em vez da mãozinha, então nada parecia clicável. Alguns pontos funcionavam e a maioria não — sem padrão aparente.

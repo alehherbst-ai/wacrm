@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
+import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
+import { cn } from "@/lib/utils";
 import {
+  Bell,
   LogOut,
   Menu,
   PanelLeftClose,
@@ -65,6 +68,8 @@ export function Header({
   const pathname = usePathname();
   const { profile, signOut } = useAuth();
   const titleKey = getPageTitleKey(pathname);
+  const unreadNotifications = useUnreadNotifications();
+  const isNotificationsActive = pathname.startsWith("/notifications");
 
   const initial =
     profile?.full_name?.charAt(0)?.toUpperCase() ??
@@ -105,6 +110,37 @@ export function Header({
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
+        {/* Notifications. Moved out of the left nav so it sits with the
+            other account-level controls, and reduced to a bell: the
+            exact unread count was never the point — what matters is
+            "something needs you" versus "nothing does", which a dot
+            says faster than a number. */}
+        <Link
+          href="/notifications"
+          aria-label={
+            unreadNotifications > 0
+              ? t("notificationsUnread", { count: unreadNotifications })
+              : t("notifications")
+          }
+          title={t("notifications")}
+          className={cn(
+            "relative flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-muted",
+            isNotificationsActive
+              ? "text-primary"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Bell className="h-5 w-5" />
+          {unreadNotifications > 0 && (
+            // Ringed in the header's own background so the dot stays
+            // legible where it overlaps the bell's outline.
+            <span
+              aria-hidden
+              className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background"
+            />
+          )}
+        </Link>
+
         <ModeToggle />
 
         <DropdownMenu>

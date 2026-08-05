@@ -18,7 +18,6 @@
     "title": "Uniko CRM",
     "dashboard": "Dashboard",
     "inbox": "Inbox",
-    "notifications": "Notifications",
     "contacts": "Contacts",
     "activities": "Activities",
     "pipelines": "Pipelines",
@@ -28,7 +27,6 @@
     "settings": "Settings",
     "beta": "Beta",
     "unreadConversations": "{count} unread {count, plural, =1 {conversation} other {conversations}}",
-    "unreadNotifications": "{count} unread {count, plural, =1 {notification} other {notifications}}",
     "roleOwner": "Owner",
     "roleAdmin": "Admin",
     "roleAgent": "Agent",
@@ -57,7 +55,23 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Profile",
     "menuSettings": "Settings",
-    "menuSignOut": "Sign out"
+    "menuSignOut": "Sign out",
+    "notificationsUnread": "{count} unread {count, plural, =1 {notification} other {notifications}}"
+  },
+  "Notifications": {
+    "title": "Notifications",
+    "description": "Activities assigned to you, due today or already overdue — plus conversations a teammate handed over.",
+    "markAllRead": "Mark all as read",
+    "emptyTitle": "No notifications yet",
+    "emptyHint": "Alerts about your activities and assigned conversations show up here.",
+    "unread": "Unread",
+    "retry": "Retry",
+    "markReadError": "Could not mark as read",
+    "markAllError": "Could not mark all as read",
+    "typeConversationAssigned": "Conversation assigned",
+    "typeActivityAssigned": "Activity assigned",
+    "typeActivityDueToday": "Due today",
+    "typeActivityOverdue": "Overdue activity"
   },
   "ModeToggle": {
     "switchMode": "Switch to {mode} mode"

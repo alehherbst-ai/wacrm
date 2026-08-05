@@ -35,7 +35,20 @@ export function useDueActivitySweep(enabled: boolean) {
       // A hidden tab can't show anything anyway, and skipping keeps
       // background tabs from waking the DB every minute forever.
       if (document.visibilityState !== "visible") return;
-      const { error } = await createClient().rpc("notify_due_activities");
+
+      // "Today" is the READER's today. The server's NOW() is UTC, so
+      // deriving the window there would put a Brazilian agent's
+      // heads-up three hours out. The browser is the only place that
+      // knows where the person actually is, so it sends the boundaries.
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+
+      const { error } = await createClient().rpc("notify_due_activities", {
+        p_day_start: dayStart.toISOString(),
+        p_day_end: dayEnd.toISOString(),
+      });
       if (error && !cancelled) {
         // Non-fatal by design: a missed sweep only delays a bell, and
         // the next tick retries. Logged so a persistent failure (e.g.

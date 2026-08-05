@@ -18,7 +18,6 @@
     "title": "Uniko CRM",
     "dashboard": "Painel",
     "inbox": "Caixa de entrada",
-    "notifications": "Notificações",
     "contacts": "Contatos",
     "activities": "Atividades",
     "pipelines": "Funis",
@@ -28,7 +27,6 @@
     "settings": "Configurações",
     "beta": "Beta",
     "unreadConversations": "{count} {count, plural, =1 {conversa não lida} other {conversas não lidas}}",
-    "unreadNotifications": "{count} {count, plural, =1 {notificação não lida} other {notificações não lidas}}",
     "roleOwner": "Proprietário",
     "roleAdmin": "Admin",
     "roleAgent": "Agente",
@@ -57,7 +55,23 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Perfil",
     "menuSettings": "Configurações",
-    "menuSignOut": "Sair"
+    "menuSignOut": "Sair",
+    "notificationsUnread": "{count} {count, plural, =1 {notificação não lida} other {notificações não lidas}}"
+  },
+  "Notifications": {
+    "title": "Notificações",
+    "description": "Atividades atribuídas a você, vencendo hoje ou já vencidas — e conversas que um colega te passou.",
+    "markAllRead": "Marcar todas como lidas",
+    "emptyTitle": "Nenhuma notificação",
+    "emptyHint": "Avisos sobre suas atividades e conversas atribuídas aparecem aqui.",
+    "unread": "Não lida",
+    "retry": "Tentar de novo",
+    "markReadError": "Não foi possível marcar como lida",
+    "markAllError": "Não foi possível marcar todas como lidas",
+    "typeConversationAssigned": "Conversa atribuída",
+    "typeActivityAssigned": "Atividade atribuída",
+    "typeActivityDueToday": "Atividade para hoje",
+    "typeActivityOverdue": "Atividade vencida"
   },
   "ModeToggle": {
     "switchMode": "Mudar para o modo {mode}"

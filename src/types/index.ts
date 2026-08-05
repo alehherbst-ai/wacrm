@@ -234,7 +234,14 @@ export interface Conversation {
 // Notifications (migration 027)
 // ============================================================
 
-export type NotificationType = 'conversation_assigned' | 'activity_due';
+export type NotificationType =
+  | 'conversation_assigned'
+  /** Someone assigned you an activity. */
+  | 'activity_assigned'
+  /** An activity you own falls on today. */
+  | 'activity_due_today'
+  /** An activity you own is past its deadline and still open. */
+  | 'activity_overdue';
 
 export interface Notification {
   id: string;

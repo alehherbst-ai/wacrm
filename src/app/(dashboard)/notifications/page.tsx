@@ -4,11 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useTranslations } from "next-intl";
 import type { Notification } from "@/types";
 import {
+  AlarmClock,
   Bell,
   CalendarClock,
   CheckCheck,
+  ClipboardCheck,
   Loader2,
   UserPlus,
 } from "lucide-react";
@@ -17,13 +20,26 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-// Icon per notification type — a one-line add per new type.
-const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
-  conversation_assigned: UserPlus,
-  activity_due: CalendarClock,
+/**
+ * Presentation per notification type. The stored `title` is the
+ * subject (the activity's name, say) — WHAT happened lives here, in
+ * the reader's language, rather than being frozen into English text at
+ * insert time the way migration 027's trigger does.
+ */
+const TYPE_META: Record<
+  Notification["type"],
+  { icon: typeof Bell; labelKey: string; urgent?: boolean }
+> = {
+  conversation_assigned: { icon: UserPlus, labelKey: "typeConversationAssigned" },
+  activity_assigned: { icon: ClipboardCheck, labelKey: "typeActivityAssigned" },
+  activity_due_today: { icon: CalendarClock, labelKey: "typeActivityDueToday" },
+  // The only type that gets colour: a missed deadline is the one thing
+  // here that is already costing something.
+  activity_overdue: { icon: AlarmClock, labelKey: "typeActivityOverdue", urgent: true },
 };
 
 export default function NotificationsPage() {
+  const t = useTranslations("Notifications");
   const router = useRouter();
   const { accountId } = useAuth();
   const [notifications, setNotifications] = useState<Notification[] | null>(
@@ -110,11 +126,11 @@ export default function NotificationsPage() {
         .eq("id", id)
         .is("read_at", null);
       if (updateErr) {
-        toast.error("Failed to mark notification as read");
+        toast.error(t("markReadError"));
         load();
       }
     },
-    [load],
+    [load, t],
   );
 
   const handleClick = useCallback(
@@ -147,17 +163,17 @@ export default function NotificationsPage() {
       .is("read_at", null);
     setMarkingAll(false);
     if (updateErr) {
-      toast.error("Failed to mark all as read");
+      toast.error(t("markAllError"));
       load();
     }
-  }, [unreadIds.length, load]);
+  }, [unreadIds.length, load, t]);
 
   if (error) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2">
         <p className="text-sm text-destructive">{error}</p>
         <Button variant="outline" onClick={() => window.location.reload()}>
-          Retry
+          {t("retry")}
         </Button>
       </div>
     );
@@ -175,9 +191,9 @@ export default function NotificationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Conversations other teammates assign to you show up here.
+            {t("description")}
           </p>
         </div>
         <Button
@@ -191,7 +207,7 @@ export default function NotificationsPage() {
           ) : (
             <CheckCheck className="h-4 w-4" />
           )}
-          Mark all as read
+          {t("markAllRead")}
         </Button>
       </div>
 
@@ -201,18 +217,22 @@ export default function NotificationsPage() {
             <Bell className="h-6 w-6 text-primary" />
           </div>
           <p className="mt-3 text-sm font-medium text-foreground">
-            No notifications yet
+            {t("emptyTitle")}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            You&apos;ll see an alert here when someone assigns you a
-            conversation.
+            {t("emptyHint")}
           </p>
         </div>
       ) : (
         <ul className="space-y-2">
           {notifications.map((n) => {
-            const Icon = TYPE_ICON[n.type] ?? Bell;
+            const meta = TYPE_META[n.type];
+            const Icon = meta?.icon ?? Bell;
             const isUnread = !n.read_at;
+            // Overdue keeps its red even once read: the deadline is
+            // still missed, and dimming it to grey alongside everything
+            // else would bury the one row that needs acting on.
+            const urgent = Boolean(meta?.urgent);
             return (
               <li key={n.id}>
                 <button
@@ -220,26 +240,46 @@ export default function NotificationsPage() {
                   onClick={() => handleClick(n)}
                   className={cn(
                     "flex w-full items-start gap-3 rounded-xl border p-4 text-left transition-colors",
-                    isUnread
-                      ? "border-primary/30 bg-primary/5 hover:border-primary/50"
-                      : "border-border bg-card hover:border-border/70",
+                    urgent
+                      ? "border-destructive/50 bg-destructive/10 hover:border-destructive"
+                      : isUnread
+                        ? "border-primary/30 bg-primary/5 hover:border-primary/50"
+                        : "border-border bg-card hover:border-border/70",
                   )}
                 >
                   <div
                     className={cn(
                       "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg",
-                      isUnread ? "bg-primary/15" : "bg-muted",
+                      urgent
+                        ? "bg-destructive/20"
+                        : isUnread
+                          ? "bg-primary/15"
+                          : "bg-muted",
                     )}
                     aria-hidden
                   >
                     <Icon
                       className={cn(
                         "h-5 w-5",
-                        isUnread ? "text-primary" : "text-muted-foreground",
+                        urgent
+                          ? "text-destructive"
+                          : isUnread
+                            ? "text-primary"
+                            : "text-muted-foreground",
                       )}
                     />
                   </div>
                   <div className="min-w-0 flex-1">
+                    {meta && (
+                      <p
+                        className={cn(
+                          "text-[11px] font-medium uppercase tracking-wide",
+                          urgent ? "text-destructive" : "text-muted-foreground",
+                        )}
+                      >
+                        {t(meta.labelKey)}
+                      </p>
+                    )}
                     <div className="flex items-center gap-2">
                       <span
                         className={cn(
@@ -251,7 +291,7 @@ export default function NotificationsPage() {
                       </span>
                       {isUnread && (
                         <span
-                          aria-label="Unread"
+                          aria-label={t("unread")}
                           className="h-2 w-2 flex-shrink-0 rounded-full bg-primary"
                         />
                       )}

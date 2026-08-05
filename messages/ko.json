@@ -18,7 +18,6 @@
     "title": "Uniko CRM",
     "dashboard": "대시보드",
     "inbox": "인박스",
-    "notifications": "알림",
     "contacts": "연락처",
     "activities": "활동",
     "pipelines": "파이프라인",
@@ -28,7 +27,6 @@
     "settings": "설정",
     "beta": "베타",
     "unreadConversations": "읽지 않은 대화 {count}건",
-    "unreadNotifications": "읽지 않은 알림 {count}건",
     "roleOwner": "소유자",
     "roleAdmin": "관리자",
     "roleAgent": "상담원",
@@ -57,7 +55,23 @@
     "defaultAvatar": "아바타",
     "menuProfile": "프로필",
     "menuSettings": "설정",
-    "menuSignOut": "로그아웃"
+    "menuSignOut": "로그아웃",
+    "notificationsUnread": "읽지 않은 알림 {count}개"
+  },
+  "Notifications": {
+    "title": "알림",
+    "description": "담당으로 지정된 활동, 오늘 마감이거나 기한이 지난 활동, 그리고 동료가 넘긴 대화가 표시됩니다.",
+    "markAllRead": "모두 읽음으로 표시",
+    "emptyTitle": "알림이 없습니다",
+    "emptyHint": "활동과 배정된 대화에 대한 알림이 여기에 표시됩니다.",
+    "unread": "읽지 않음",
+    "retry": "다시 시도",
+    "markReadError": "읽음으로 표시할 수 없습니다",
+    "markAllError": "모두 읽음으로 표시할 수 없습니다",
+    "typeConversationAssigned": "대화 배정",
+    "typeActivityAssigned": "활동 배정",
+    "typeActivityDueToday": "오늘 마감",
+    "typeActivityOverdue": "기한 초과 활동"
   },
   "ModeToggle": {
     "switchMode": "{mode} 모드로 전환"
