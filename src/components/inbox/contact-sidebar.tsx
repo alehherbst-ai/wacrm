@@ -24,7 +24,6 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -240,7 +239,19 @@ export function ContactSidebar({ contact, onTagsChanged }: ContactSidebarProps) 
 
   return (
     <div className="flex h-full w-70 flex-col border-l border-border bg-card">
-      <ScrollArea className="flex-1">
+      {/* `min-h-0` is load-bearing: a flex child defaults to
+          min-height:auto, so without it this panel grows to fit tags,
+          deals and every note instead of shrinking to the space left
+          over — the overflow is then clipped by the inbox's
+          overflow-hidden with nothing to scroll (the same trap as the
+          conversation list, issue #229). That's why the panel simply
+          cut off partway down the notes.
+
+          `no-scrollbar` hides the bar itself, not the scrolling: wheel,
+          trackpad, touch and keyboard all still work. Deliberate at
+          this width — a permanent gutter next to a 280px column is
+          most of what makes the panel feel cramped. */}
+      <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar">
         <div className="p-4">
           {/* Contact Info */}
           <div className="flex flex-col items-center text-center">
@@ -522,7 +533,7 @@ export function ContactSidebar({ contact, onTagsChanged }: ContactSidebarProps) 
             </div>
           </div>
         </div>
-      </ScrollArea>
+      </div>
 
       {/* New-deal sheet. Mounted only once a pipeline is picked so its
           `stages` prop is never an empty list. */}

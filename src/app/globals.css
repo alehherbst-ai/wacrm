@@ -217,6 +217,22 @@ html[data-theme="rose"] {
   --sidebar-ring: oklch(0.645 0.22 16);
 }
 
+/**
+ * Scroll without a visible scrollbar.
+ *
+ * The element still scrolls by every normal means — wheel, trackpad,
+ * touch, and keyboard once focused — only the bar itself is hidden.
+ * Use where a permanent gutter would crowd a narrow panel; avoid where
+ * the bar is the only hint that there is more content below.
+ */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -6,6 +6,25 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-05] Painel do contato não rolava
+
+**Antes:** o painel lateral do contato (tags, negócios, notas) cortava no meio e não dava para rolar até o fim. Quanto mais notas, mais conteúdo ficava inalcançável.
+
+**Causa:** o painel usava `flex-1` **sem `min-h-0`**. Um filho de flex tem `min-height: auto` por padrão, então em vez de encolher para o espaço que sobrou, ele crescia para caber todo o conteúdo — e o excesso era cortado pelo `overflow-hidden` do inbox, sem nada para rolar. É exatamente a mesma armadilha já documentada na lista de conversas (issue #229); o painel do contato tinha ficado de fora.
+
+**Depois:**
+- `min-h-0` no contêiner de rolagem, que é o que faz ele encolher e passar a rolar de verdade.
+- Nova utilidade `no-scrollbar` no `globals.css` esconde a barra sem desligar a rolagem: roda, trackpad, toque e teclado continuam funcionando normalmente — só a barra some. Deliberado nesta largura: uma calha permanente ao lado de uma coluna de 280px é boa parte do que deixa o painel apertado.
+- O `ScrollArea` do Base UI saiu deste painel. Ele existe para desenhar uma barra estilizada; sem barra alguma, é maquinário sem função — a rolagem nativa faz o mesmo com menos camada.
+
+Deixei um comentário na utilidade avisando para não usá-la onde a barra é a única pista de que existe mais conteúdo abaixo. Aqui não é o caso: o conteúdo do painel é claramente contínuo.
+
+Conferi se o mesmo defeito existia em outros painéis — a lista de conversas já tinha `min-h-0`, e não há outro caso.
+
+**Verificação:** build limpo, typecheck limpo, lint 0 erros, e confirmei que a regra foi gerada no CSS compilado (`no-scrollbar{scrollbar-width:none;...}`).
+
+Arquivos: `src/components/inbox/contact-sidebar.tsx`, `src/app/globals.css`
+
 ## [2026-08-05] Atividades com prazo, calendário e quadro; busca sugere contatos salvos
 
 > **Requer migration.** `supabase/migrations/041_activities.sql` precisa ser aplicada
