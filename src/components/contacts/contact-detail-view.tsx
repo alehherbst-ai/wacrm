@@ -15,6 +15,7 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { ContactActivitiesPanel } from '@/components/activities/contact-activities-panel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -414,6 +415,12 @@ export function ContactDetailView({
                 >
                   {t('tabs.deals')}
                 </TabsTrigger>
+                <TabsTrigger
+                  value="activities"
+                  className="data-active:bg-muted data-active:text-primary text-muted-foreground"
+                >
+                  {t('tabs.activities')}
+                </TabsTrigger>
               </TabsList>
 
               {/* Details Tab */}
@@ -675,6 +682,11 @@ export function ContactDetailView({
                     ))}
                   </div>
                 )}
+              </TabsContent>
+
+              {/* Activities Tab */}
+              <TabsContent value="activities" className="flex-1 overflow-y-auto px-4 py-3">
+                {contact && <ContactActivitiesPanel contact={contact} />}
               </TabsContent>
             </Tabs>
           </div>

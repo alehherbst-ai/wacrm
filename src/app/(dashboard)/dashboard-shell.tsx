@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
+import { useDueActivitySweep } from "@/hooks/use-due-activity-sweep";
 
 // Auth-gated dashboard shell. Extracted from the layout so the layout
 // itself can stay a server component and export metadata (noindex) —
@@ -17,6 +18,11 @@ const SIDEBAR_COLLAPSED_KEY = "uniko:sidebar-collapsed";
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+
+  // Turn due activities into notifications while the app is open —
+  // this app has no cron, and the bell only helps someone who is here
+  // to see it. Idempotent server-side, so tabs can't duplicate.
+  useDueActivitySweep(Boolean(user));
 
   // Sidebar drawer state — only used on mobile. On lg+ the sidebar is
   // always visible and this stays at `false` (ignored by the component).

@@ -129,6 +129,31 @@ export interface Contact {
   is_group?: boolean;
 }
 
+/**
+ * A scheduled piece of follow-up work (migration 041). Usually hangs
+ * off a contact, always has a deadline, and raises a notification for
+ * `assigned_to` once that deadline passes.
+ */
+export interface Activity {
+  id: string;
+  account_id: string;
+  /** Creator. Distinct from `assigned_to`, who owes the work. */
+  user_id: string;
+  assigned_to?: string | null;
+  contact_id?: string | null;
+  title: string;
+  description?: string | null;
+  /** Deadline. A moment, not a date — "call back at 3pm" is normal. */
+  due_at: string;
+  completed_at?: string | null;
+  /** Set once the due-date notification fired; keeps the sweep idempotent. */
+  notified_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  /** Hydrated by queries that embed `contact:contacts(...)`. */
+  contact?: Contact | null;
+}
+
 export interface Tag {
   id: string;
   user_id: string;
@@ -209,7 +234,7 @@ export interface Conversation {
 // Notifications (migration 027)
 // ============================================================
 
-export type NotificationType = 'conversation_assigned';
+export type NotificationType = 'conversation_assigned' | 'activity_due';
 
 export interface Notification {
   id: string;
@@ -219,6 +244,8 @@ export interface Notification {
   type: NotificationType;
   conversation_id?: string;
   contact_id?: string;
+  /** Set on `activity_due` notifications (migration 041). */
+  activity_id?: string;
   /** Who triggered it. Null when an automation/system assigned it. */
   actor_user_id?: string;
   title: string;

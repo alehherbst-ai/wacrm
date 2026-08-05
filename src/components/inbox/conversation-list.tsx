@@ -9,8 +9,16 @@ import {
 } from "@/lib/inbox/conversations";
 import { rowsEqual } from "@/lib/inbox/rows-equal";
 import { cn } from "@/lib/utils";
-import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X, Users, CheckCheck, Plus } from "lucide-react";
+import type { Contact, Conversation, ConversationStatus, Tag } from "@/types";
+import {
+  Search,
+  ChevronDown,
+  X,
+  Users,
+  CheckCheck,
+  Plus,
+  MessageSquarePlus,
+} from "lucide-react";
 import { NewConversationDialog } from "./new-conversation-dialog";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -102,6 +110,9 @@ export function ConversationList({
   const [loading, setLoading] = useState(true);
   const [clearingInbox, setClearingInbox] = useState(false);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
+  // Saved contacts, for suggesting people who have no thread yet.
+  const [allContacts, setAllContacts] = useState<Contact[]>([]);
+  const [startingContactId, setStartingContactId] = useState<string | null>(null);
   // Contact-based filters (issue #272). Tags use OR logic (a conversation
   // matches if its contact carries any selected tag), consistent with
   // Broadcast audience filtering. Company is an exact match on the field.
@@ -178,12 +189,23 @@ export function ConversationList({
 
   // Tag definitions for the filter picker — loaded once so labels/colours
   // stay stable regardless of which conversations happen to be loaded.
+  // Saved contacts ride along: the search box suggests people who have
+  // no conversation yet, and both are small account-wide reference sets
+  // that never change while the inbox is open.
   useEffect(() => {
     const supabase = createClient();
     let cancelled = false;
     (async () => {
-      const { data } = await supabase.from("tags").select("*").order("name");
-      if (!cancelled && data) setTags(data as Tag[]);
+      const [tagsRes, contactsRes] = await Promise.all([
+        supabase.from("tags").select("*").order("name"),
+        supabase
+          .from("contacts")
+          .select("id, name, phone, avatar_url, is_group")
+          .order("name"),
+      ]);
+      if (cancelled) return;
+      if (tagsRes.data) setTags(tagsRes.data as Tag[]);
+      if (contactsRes.data) setAllContacts(contactsRes.data as Contact[]);
     })();
     return () => {
       cancelled = true;
@@ -288,6 +310,70 @@ export function ConversationList({
   }, []);
 
   const hasContactFilters = selectedTagIds.length > 0 || selectedCompany !== null;
+
+  /**
+   * Saved contacts matching the search that have NO conversation in the
+   * list yet.
+   *
+   * Searching for someone you've never messaged used to return nothing,
+   * which reads as "this person isn't in the CRM" when they are — they
+   * just have no thread. Surfacing them here turns a dead end into one
+   * click. Contacts that already have a conversation are excluded
+   * because the list above is already the better answer for them.
+   */
+  const contactSuggestions = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (q.length < 2) return [];
+
+    const withConversation = new Set(
+      conversations.map((c) => c.contact_id).filter(Boolean),
+    );
+
+    return allContacts
+      .filter((c) => {
+        if (withConversation.has(c.id)) return false;
+        // Groups can't be started from here — you can't open a WhatsApp
+        // group you were never added to.
+        if (c.is_group) return false;
+        if (audience === "groups") return false;
+        return (
+          (c.name ?? "").toLowerCase().includes(q) ||
+          (c.phone ?? "").toLowerCase().includes(q)
+        );
+      })
+      .slice(0, 5);
+  }, [search, conversations, allContacts, audience]);
+
+  const handlePickContact = useCallback(
+    async (contact: Contact) => {
+      if (startingContactId) return;
+      setStartingContactId(contact.id);
+      try {
+        const res = await fetch("/api/whatsapp/conversations/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: contact.phone }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok || !body?.conversation_id) {
+          const code = (body as { error?: string } | null)?.error;
+          toast.error(
+            code === "not_on_whatsapp"
+              ? t("startNotOnWhatsapp")
+              : t("startError"),
+          );
+          return;
+        }
+        setSearch("");
+        onConversationStarted?.(body.conversation_id as string);
+      } catch {
+        toast.error(t("startError"));
+      } finally {
+        setStartingContactId(null);
+      }
+    },
+    [startingContactId, t, onConversationStarted],
+  );
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -619,6 +705,53 @@ export function ConversationList({
                 onSelect={handleSelect}
                 t={t}
               />
+            ))}
+          </div>
+        )}
+
+        {/* Saved contacts with no thread yet. Rendered below the
+            conversations (and outside the empty-state branch) so it
+            also shows when the search DID match threads — the person
+            you want may be both. */}
+        {canSendMessages && contactSuggestions.length > 0 && (
+          <div className="border-t border-border">
+            <p className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              {t("contactSuggestions")}
+            </p>
+            {contactSuggestions.map((contact) => (
+              <button
+                key={contact.id}
+                onClick={() => void handlePickContact(contact)}
+                disabled={startingContactId !== null}
+                className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/50 disabled:opacity-60"
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground">
+                  {contact.avatar_url ? (
+                    <img
+                      src={contact.avatar_url}
+                      alt={contact.name || contact.phone}
+                      className="h-8 w-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    (contact.name || contact.phone).charAt(0).toUpperCase()
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-foreground">
+                    {contact.name || contact.phone}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {startingContactId === contact.id
+                      ? t("startingConversation")
+                      : t("startConversationHint")}
+                  </p>
+                </div>
+                {startingContactId === contact.id ? (
+                  <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                ) : (
+                  <MessageSquarePlus className="h-4 w-4 shrink-0 text-muted-foreground" />
+                )}
+              </button>
             ))}
           </div>
         )}

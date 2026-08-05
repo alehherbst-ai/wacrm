@@ -20,6 +20,7 @@
     "inbox": "Inbox",
     "notifications": "Notifications",
     "contacts": "Contacts",
+    "activities": "Activities",
     "pipelines": "Pipelines",
     "automations": "Automations",
     "flows": "Flows",
@@ -44,6 +45,7 @@
     "inbox": "Inbox",
     "notifications": "Notifications",
     "contacts": "Contacts",
+    "activities": "Activities",
     "pipelines": "Pipelines",
     "automations": "Automations",
     "settings": "Settings",
@@ -151,7 +153,12 @@
       "unknown": "Unknown",
       "clearInbox": "Clear inbox",
       "clearInboxDone": "{count} {count, plural, =1 {conversation} other {conversations}} archived",
-      "clearInboxError": "Couldn't clear the inbox"
+      "clearInboxError": "Couldn't clear the inbox",
+      "contactSuggestions": "Saved contacts",
+      "startConversationHint": "Open conversation",
+      "startingConversation": "Opening conversation...",
+      "startNotOnWhatsapp": "That contact does not have WhatsApp.",
+      "startError": "Could not open the conversation."
     },
     "newConversation": {
       "title": "New conversation",
@@ -369,7 +376,8 @@
         "tags": "Tags",
         "noTags": "No tags",
         "noDeals": "No deals",
-        "addNotePlaceholder": "Add a note..."
+        "addNotePlaceholder": "Add a note...",
+        "activities": "Activities"
       },
       "actions": {
         "edit": "Edit",
@@ -478,6 +486,68 @@
       "toastRenameFailed": "Could not rename field.",
       "toastDeleteFailed": "Could not delete field.",
       "toastDeleted": "Deleted \"{name}\"."
+    }
+  },
+  "Activities": {
+    "page": {
+      "title": "Activities",
+      "description": "Your tasks with deadlines, as a board or a calendar.",
+      "overdueSummary": "{count} overdue {count, plural, =1 {task} other {tasks}}",
+      "viewBoard": "Board",
+      "viewCalendar": "Calendar",
+      "scaleDay": "Day",
+      "scaleWeek": "Week",
+      "scaleMonth": "Month",
+      "newActivity": "New activity",
+      "rangeSummary": "{count} {count, plural, =1 {activity} other {activities}} in range",
+      "updateError": "Could not update the activity.",
+      "deleteError": "Could not delete the activity."
+    },
+    "board": {
+      "overdue": "Overdue tasks",
+      "today": "Tasks due today",
+      "tomorrow": "Tasks due tomorrow",
+      "next3": "Next 3 days",
+      "later": "Upcoming tasks",
+      "empty": "Nothing here"
+    },
+    "calendar": {
+      "previous": "Previous period",
+      "next": "Next period",
+      "today": "Today",
+      "emptyDay": "No activities on this day",
+      "emptyDayCta": "No activities on this day — click to create one",
+      "more": "+{count} more"
+    },
+    "card": {
+      "complete": "Mark as done",
+      "reopen": "Reopen",
+      "delete": "Delete",
+      "overdue": "Overdue"
+    },
+    "form": {
+      "title": "New activity",
+      "description": "Create a task with a deadline. You get a notification when it comes due.",
+      "descriptionForContact": "Task for {name}. You get a notification when it comes due.",
+      "titleLabel": "What needs doing",
+      "titlePlaceholder": "Call to confirm the quote",
+      "dueLabel": "Deadline",
+      "dueHint": "The bell notifies you when this moment arrives.",
+      "notesLabel": "Notes",
+      "notesPlaceholder": "Details that help when the time comes (optional)",
+      "cancel": "Cancel",
+      "save": "Create activity",
+      "saving": "Creating...",
+      "created": "Activity created",
+      "errorInvalidDate": "Invalid deadline.",
+      "errorGeneric": "Could not create the activity."
+    },
+    "contactPanel": {
+      "newActivity": "New activity",
+      "empty": "No activities for this contact",
+      "completedHeading": "Completed ({count})",
+      "updateError": "Could not update the activity.",
+      "deleteError": "Could not delete the activity."
     }
   },
   "Pipelines": {

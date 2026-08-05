@@ -20,6 +20,7 @@
     "inbox": "Caixa de entrada",
     "notifications": "Notificações",
     "contacts": "Contatos",
+    "activities": "Atividades",
     "pipelines": "Funis",
     "automations": "Automações",
     "flows": "Fluxos",
@@ -44,6 +45,7 @@
     "inbox": "Caixa de entrada",
     "notifications": "Notificações",
     "contacts": "Contatos",
+    "activities": "Atividades",
     "pipelines": "Funis",
     "automations": "Automações",
     "settings": "Configurações",
@@ -151,7 +153,12 @@
       "unknown": "Desconhecido",
       "clearInbox": "Limpar caixa",
       "clearInboxDone": "{count} {count, plural, =1 {conversa arquivada} other {conversas arquivadas}}",
-      "clearInboxError": "Não foi possível limpar a caixa de entrada"
+      "clearInboxError": "Não foi possível limpar a caixa de entrada",
+      "contactSuggestions": "Contatos salvos",
+      "startConversationHint": "Abrir conversa",
+      "startingConversation": "Abrindo conversa...",
+      "startNotOnWhatsapp": "Esse contato não tem WhatsApp.",
+      "startError": "Não foi possível abrir a conversa."
     },
     "newConversation": {
       "title": "Nova conversa",
@@ -369,7 +376,8 @@
         "tags": "Tags",
         "noTags": "Nenhuma tag",
         "noDeals": "Nenhum negócio",
-        "addNotePlaceholder": "Adicionar uma nota..."
+        "addNotePlaceholder": "Adicionar uma nota...",
+        "activities": "Atividades"
       },
       "actions": {
         "edit": "Editar",
@@ -478,6 +486,68 @@
       "toastRenameFailed": "Não foi possível renomear o campo.",
       "toastDeleteFailed": "Não foi possível excluir o campo.",
       "toastDeleted": "\"{name}\" excluído."
+    }
+  },
+  "Activities": {
+    "page": {
+      "title": "Atividades",
+      "description": "Suas tarefas com prazo, em quadro ou calendário.",
+      "overdueSummary": "{count} {count, plural, =1 {tarefa vencida} other {tarefas vencidas}}",
+      "viewBoard": "Quadro",
+      "viewCalendar": "Calendário",
+      "scaleDay": "Dia",
+      "scaleWeek": "Semana",
+      "scaleMonth": "Mês",
+      "newActivity": "Nova atividade",
+      "rangeSummary": "{count} {count, plural, =1 {atividade} other {atividades}} no período",
+      "updateError": "Não foi possível atualizar a atividade.",
+      "deleteError": "Não foi possível excluir a atividade."
+    },
+    "board": {
+      "overdue": "Tarefas vencidas",
+      "today": "Tarefas de hoje",
+      "tomorrow": "Tarefas de amanhã",
+      "next3": "Próximos 3 dias",
+      "later": "Tarefas futuras",
+      "empty": "Nada por aqui"
+    },
+    "calendar": {
+      "previous": "Período anterior",
+      "next": "Próximo período",
+      "today": "Hoje",
+      "emptyDay": "Nenhuma atividade neste dia",
+      "emptyDayCta": "Nenhuma atividade neste dia — clique para criar",
+      "more": "+{count} mais"
+    },
+    "card": {
+      "complete": "Marcar como concluída",
+      "reopen": "Reabrir",
+      "delete": "Excluir",
+      "overdue": "Vencida"
+    },
+    "form": {
+      "title": "Nova atividade",
+      "description": "Crie uma tarefa com prazo. Você recebe uma notificação quando chegar a hora.",
+      "descriptionForContact": "Tarefa para {name}. Você recebe uma notificação quando chegar a hora.",
+      "titleLabel": "O que precisa ser feito",
+      "titlePlaceholder": "Ligar para confirmar a proposta",
+      "dueLabel": "Prazo",
+      "dueHint": "A notificação aparece no sino quando esse horário chegar.",
+      "notesLabel": "Observações",
+      "notesPlaceholder": "Detalhes que ajudem na hora de executar (opcional)",
+      "cancel": "Cancelar",
+      "save": "Criar atividade",
+      "saving": "Criando...",
+      "created": "Atividade criada",
+      "errorInvalidDate": "Prazo inválido.",
+      "errorGeneric": "Não foi possível criar a atividade."
+    },
+    "contactPanel": {
+      "newActivity": "Nova atividade",
+      "empty": "Nenhuma atividade para este contato",
+      "completedHeading": "Concluídas ({count})",
+      "updateError": "Não foi possível atualizar a atividade.",
+      "deleteError": "Não foi possível excluir a atividade."
     }
   },
   "Pipelines": {

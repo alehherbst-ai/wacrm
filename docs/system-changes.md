@@ -6,6 +6,60 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-05] Atividades com prazo, calendário e quadro; busca sugere contatos salvos
+
+> **Requer migration.** `supabase/migrations/041_activities.sql` precisa ser aplicada
+> no Supabase. Ela cria a tabela `activities`, estende o tipo das notificações e
+> registra a função `notify_due_activities()`.
+
+### 1. Busca do inbox sugere contatos salvos
+
+**Antes:** buscar por alguém que ainda não tinha conversa não retornava nada — o que se lê como "essa pessoa não está no CRM", quando na verdade ela está, só não tem thread.
+
+**Depois:** abaixo das conversas aparece uma seção "Contatos salvos" com até 5 contatos que batem com a busca e **não têm conversa ainda**. Um clique abre a conversa, passando pela mesma rota validada de "nova conversa".
+- Contatos que já têm conversa são excluídos da sugestão: a lista acima já é a resposta melhor para eles.
+- Grupos não aparecem — não dá para iniciar um grupo do WhatsApp em que você nunca foi incluído.
+- A seção fica **fora** do estado vazio, então também aparece quando a busca encontrou threads: a pessoa que você quer pode ser as duas coisas.
+
+### 2. Atividades
+
+Nova seção **Atividades** no menu lateral, e uma aba **Atividades** dentro de cada contato.
+
+**Modelo (migration 041).** Uma atividade tem título, observações, prazo, responsável e (opcionalmente) um contato.
+- O prazo é `TIMESTAMPTZ`, não uma data. "Ligar terça às 15h" é o caso normal; uma coluna só-data empilharia tudo no mesmo ponto do dia e tornaria as visões de dia e semana inúteis.
+- **As colunas do quadro não são armazenadas.** São derivadas do prazo contra o relógio de quem está lendo, porque "hoje" depende do fuso do leitor — e uma coluna gravada estaria errada na virada da meia-noite seguinte.
+- `assigned_to` (quem deve fazer, e quem é notificado) é separado de `user_id` (quem criou). Eles divergem assim que a conta tem mais de um agente.
+
+**Quadro (Kanban).** Cinco colunas na ordem de urgência: **Tarefas vencidas → hoje → amanhã → próximos 3 dias → futuras**. A ordem cronológica inversa enterraria as vencidas na borda direita, que é o oposto do que o quadro serve para fazer.
+- **Vencidas gritam:** a coluna inteira ganha borda e fundo avermelhados, o contador fica sólido em vermelho, e cada card tem borda esquerda grossa, fundo tingido e o texto do prazo em destaque. Cor sozinha num texto pequeno não seria lida de relance.
+- "Vencida" vence qualquer outra classificação: uma tarefa para as 9h quando já são 15h **do mesmo dia** está atrasada, e chamá-la de "hoje" esconderia justamente o estado que o quadro existe para mostrar.
+- "Próximos 3 dias" começa depois de amanhã, senão a mesma tarefa apareceria em duas colunas.
+- Tarefas concluídas saem do quadro. Nenhuma das cinco colunas é "concluído", e deixá-las entrar estacionaria um item finalizado em vermelho sob "Vencidas" para sempre.
+
+**Calendário.** Dia, semana e mês, com navegação de período e botão "Hoje".
+- A semana começa na segunda, como o resto do app já rotula os dias.
+- O mês mostra semanas inteiras (transborda para o mês vizinho) em vez de deixar bordas irregulares, e limita a 3 chips por dia com "+N".
+- Dias com algo vencido ficam avermelhados na grade.
+- Clicar num dia vazio abre o formulário já com aquela data.
+- As atividades são indexadas por dia numa passada só; filtrar a lista inteira dentro de cada uma das 42 células do mês seria quadrático à toa.
+
+**Notificações de vencimento.** O app não tem agendador de tarefas, então a varredura é uma RPC idempotente chamada pelo cliente enquanto o CRM está aberto — o que é menos concessão do que parece: uma notificação existe para ser vista, e os momentos em que alguém está com o CRM aberto são exatamente os momentos em que ela pode ser. Qualquer coisa já vencida é pega na primeira vez que alguém da conta olha.
+- Idempotente via `notified_at`, então várias abas não duplicam o aviso.
+- A RPC é `SECURITY DEFINER` (precisa escrever em `notifications`, que por design não tem policy de INSERT para o cliente), mas **checa a associação à conta explicitamente**, já que direitos de definidor ignoram RLS.
+- Reabrir uma atividade limpa o `notified_at`: sem isso, uma tarefa concluída e reaberta depois do prazo nunca mais avisaria.
+
+**Verificação:** build limpo, typecheck limpo, lint 0 erros, paridade de i18n passando nos três idiomas, 549 testes passando (as 5 falhas de fuso/ICU são pré-existentes). 13 testes novos cobrindo as regras de agrupamento — incluindo o vencido-no-mesmo-dia, a fronteira da meia-noite local e a exclusão de concluídas.
+
+**Não verificado ao vivo:** a migration ainda não foi aplicada e a instância UAZAPI continua expirada, então nada disto foi exercitado contra o banco real.
+
+Arquivos: `supabase/migrations/041_activities.sql` (novo),
+`src/lib/activities/{buckets,queries}.ts` (novos), `src/lib/activities/buckets.test.ts` (novo),
+`src/components/activities/*` (novos), `src/app/(dashboard)/activities/page.tsx` (novo),
+`src/hooks/use-due-activity-sweep.ts` (novo), `src/components/inbox/conversation-list.tsx`,
+`src/components/contacts/contact-detail-view.tsx`, `src/components/layout/{sidebar,header}.tsx`,
+`src/app/(dashboard)/dashboard-shell.tsx`, `src/app/(dashboard)/notifications/page.tsx`,
+`src/types/index.ts`, `messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-05] Molde do número no diálogo de nova conversa
 
 **Antes:** o diálogo pedia o número com um exemplo solto no placeholder (`5548912345678`) e a dica "Com código do país e DDD, apenas números". Na prática não deu para entender o formato: uma sequência de 13 dígitos corridos não mostra onde termina o país, onde termina o DDD e onde começa o número.
