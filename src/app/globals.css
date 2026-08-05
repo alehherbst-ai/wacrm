@@ -237,6 +237,62 @@ html[data-theme="rose"] {
   * {
     @apply border-border outline-ring/50;
   }
+
+  /**
+   * Hand cursor on anything clickable.
+   *
+   * Tailwind v4's Preflight sets `cursor: default` on buttons (a
+   * deliberate change from v3, matching the raw browser default), so
+   * every button in the app showed a plain arrow and nothing looked
+   * pressable. It had been patched by hand with `cursor-pointer` in
+   * about ten files, which is why some controls behaved and most
+   * didn't. This restores it in one place instead.
+   *
+   * Keyed on semantics rather than a utility class so new components
+   * inherit it for free. `<a href>` is left alone — browsers already
+   * get that right, and an anchor without an href is not a link.
+   * Labels are deliberately excluded: most of them front text inputs,
+   * where a hand would promise a click that only moves focus.
+   *
+   * Base UI renders many controls as divs carrying an ARIA role
+   * (menu items, select options, tabs), so the roles are listed
+   * alongside the real elements.
+   */
+  button,
+  summary,
+  select,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [role="option"],
+  [role="checkbox"],
+  [role="radio"],
+  [role="switch"],
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"],
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"] {
+    cursor: pointer;
+  }
+
+  /**
+   * ...but never on a control that can't be used. A hand over a
+   * disabled button promises something that won't happen. `not-allowed`
+   * says "this is a control, and it's off" — which a plain arrow (the
+   * element reading as inert text) does not.
+   *
+   * `data-disabled` is Base UI's marker; `:disabled` and `aria-disabled`
+   * cover native elements and roled divs respectively.
+   */
+  :disabled,
+  [aria-disabled="true"],
+  [data-disabled] {
+    cursor: not-allowed;
+  }
   body {
     @apply bg-background text-foreground;
   }

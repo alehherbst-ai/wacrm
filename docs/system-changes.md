@@ -6,6 +6,25 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-05] Cursor de mão em tudo que é clicável
+
+**Antes:** botões mostravam a seta comum em vez da mãozinha, então nada parecia clicável. Alguns pontos funcionavam e a maioria não — sem padrão aparente.
+
+**Causa:** o Preflight do Tailwind v4 define `cursor: default` em `<button>`. É uma mudança deliberada em relação à v3, alinhando com o padrão cru do navegador. O sintoma da inconsistência estava no próprio código: `cursor-pointer` remendado à mão em **10 arquivos** — os que alguém percebeu e corrigiu pontualmente.
+
+**Depois:** uma regra base única em `globals.css` restaura o cursor em tudo que é acionável.
+- Baseada em **semântica**, não numa classe utilitária: componentes novos herdam de graça, sem ninguém precisar lembrar.
+- Cobre também os papéis ARIA (`menuitem`, `option`, `tab`, `checkbox`, `switch`…), porque o Base UI renderiza vários controles como `div` com papel em vez de elemento nativo.
+- `<a href>` ficou de fora — o navegador já acerta isso, e âncora sem `href` não é link.
+- **Rótulos ficaram de fora de propósito:** a maioria deles fica na frente de campos de texto, onde a mãozinha prometeria um clique que só move o foco.
+- Controles desabilitados recebem `not-allowed`, não a mão. Uma mão sobre um botão desativado promete algo que não vai acontecer; `not-allowed` diz "isto é um controle, e está desligado" — coisa que a seta comum (que faz o elemento parecer texto inerte) não diz. A regra de desabilitado tem especificidade maior, então vence a de ponteiro.
+
+Antes de generalizar, conferi se havia clicáveis sem elemento semântico: só 3 casos no projeto, e nenhum é uma opção de verdade (dois são invólucros de `stopPropagation` em volta de botões reais, um é um backdrop invisível). Os `cursor-pointer` manuais que já existiam foram mantidos — concordam com a regra global e removê-los seria mexer em 10 arquivos sem mudar comportamento.
+
+**Verificação:** build limpo, typecheck limpo, lint 0 erros, 549 testes passando (as 5 falhas de fuso/ICU são pré-existentes). Confirmei as duas regras no CSS compilado — uma utilidade do Tailwind v4 que não é gerada falha em silêncio.
+
+Arquivos: `src/app/globals.css`
+
 ## [2026-08-05] Resposta a mensagem interativa chegava vazia; negócios editáveis no painel
 
 ### 1. Resposta de botão vinha sem texto
