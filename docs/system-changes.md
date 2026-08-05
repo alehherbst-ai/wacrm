@@ -6,6 +6,22 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-05] Molde do número no diálogo de nova conversa
+
+**Antes:** o diálogo pedia o número com um exemplo solto no placeholder (`5548912345678`) e a dica "Com código do país e DDD, apenas números". Na prática não deu para entender o formato: uma sequência de 13 dígitos corridos não mostra onde termina o país, onde termina o DDD e onde começa o número.
+
+**Depois:**
+- **Molde visual acima do campo**, com cada parte separada e rotulada: `55` (país) · `48` (DDD) · `91234-5678` (número). Fica acima e sempre visível, não escondido atrás de um erro — o formato é justamente o que se erra, então precisa ser legível *antes* de digitar, não depois de falhar.
+- Deixei explícito que **pode colar com espaços, parênteses e traços** — a limpeza é automática. O campo aceitar só dígitos puniria a forma mais comum de conseguir um número, que é copiar de outro lugar.
+- **Eco ao vivo abaixo do campo**, confirmando como o que foi digitado foi lido: "Entendemos: país 55 · DDD 48 · número 912345678". Isso pega o erro mais comum — digitar como se fosse discar localmente, sem o código do país — na hora, em vez de deixar virar um confuso "esse número não tem WhatsApp" depois da ida ao servidor.
+- Quando a contagem de dígitos ainda não fecha, o eco mostra quantos foram digitados e quantos costumam ser necessários, em âmbar. **Não bloqueia o botão**: é um empurrão enquanto se digita, não um veredito — quem decide é o servidor, e ele dá um motivo mais preciso.
+- A separação em partes só é afirmada para números brasileiros (código 55 com 12 ou 13 dígitos). Para outros países o eco mostra só a contagem: adivinhar onde termina o DDD de um país arbitrário erraria com frequência suficiente para ser pior do que não dizer nada. Um número de 11 dígitos sem código do país **não** é rotulado como brasileiro válido — é exatamente o caso que o eco existe para pegar.
+
+**Resolvido:** a dificuldade de entender o formato. Verificação: build limpo, typecheck limpo, lint 0 erros, paridade de i18n passando, 536 testes passando (as 5 falhas de fuso/ICU são pré-existentes). 8 testes novos no parser do eco, incluindo o número sem código do país e o número colado com formatação.
+
+Arquivos: `src/components/inbox/new-conversation-dialog.tsx`,
+`src/components/inbox/new-conversation-dialog.test.ts` (novo), `messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-04] "Limpar caixa" arquiva de verdade; iniciar conversa por número
 
 > **Requer migration.** `supabase/migrations/040_conversation_archive.sql` precisa ser

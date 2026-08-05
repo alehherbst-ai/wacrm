@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,6 +14,47 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+
+/**
+ * Break typed digits into the parts the mold above the field labels.
+ *
+ * Exported for tests. Purely presentational — the server re-validates
+ * whatever is submitted, so a wrong guess here misleads nobody into a
+ * bad write, it only makes the echo less helpful.
+ *
+ * Brazilian numbers get a real split (country + area + subscriber)
+ * because that is what the mold teaches and what every number in this
+ * account looks like. Anything else only reports its digit count:
+ * guessing where the area code ends for an arbitrary country would be
+ * wrong often enough to be worse than saying nothing.
+ */
+export function describePhoneInput(raw: string): {
+  digits: string;
+  /** Present only when the shape is confidently recognised. */
+  parts: { country: string; area: string; subscriber: string } | null;
+  /** True once the digit count could plausibly be a real number. */
+  plausible: boolean;
+} {
+  const digits = raw.replace(/\D/g, "");
+  // E.164 allows 7–15 digits; below 10 no country+area+subscriber fits.
+  const plausible = digits.length >= 10 && digits.length <= 15;
+
+  // 55 + 2-digit area + 8 or 9 subscriber digits.
+  const isBrazil =
+    digits.startsWith("55") && (digits.length === 12 || digits.length === 13);
+
+  return {
+    digits,
+    parts: isBrazil
+      ? {
+          country: digits.slice(0, 2),
+          area: digits.slice(2, 4),
+          subscriber: digits.slice(4),
+        }
+      : null,
+    plausible,
+  };
+}
 
 interface NewConversationDialogProps {
   open: boolean;
@@ -37,6 +79,8 @@ export function NewConversationDialog({
   const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const described = describePhoneInput(phone);
 
   const reset = useCallback(() => {
     setPhone("");
@@ -113,7 +157,46 @@ export function NewConversationDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2 py-2">
+        <div className="space-y-3 py-2">
+          {/* The mold. Shown ABOVE the field, and always — the format
+              is the thing people get wrong, so it has to be readable
+              before typing starts, not surfaced as an error after. Each
+              segment is labelled because "5548912345678" as a single
+              run of digits is exactly what was unclear. */}
+          <div className="rounded-lg border border-border bg-muted/40 p-3">
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              {t("moldTitle")}
+            </p>
+            <div className="flex items-end gap-2 font-mono text-sm text-foreground">
+              {(
+                [
+                  { digits: "55", label: t("moldCountry") },
+                  { digits: "48", label: t("moldArea") },
+                  { digits: "91234-5678", label: t("moldSubscriber") },
+                ] as const
+              ).map((seg, i) => (
+                <div key={seg.label} className="flex items-end gap-2">
+                  {i > 0 && (
+                    <span aria-hidden className="pb-4 text-muted-foreground">
+                      ·
+                    </span>
+                  )}
+                  <span className="flex flex-col items-center gap-1">
+                    <span className="rounded bg-card px-1.5 py-0.5">
+                      {seg.digits}
+                    </span>
+                    <span className="font-sans text-[10px] text-muted-foreground">
+                      {seg.label}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              {t("moldNote")}
+            </p>
+          </div>
+
           <Input
             autoFocus
             value={phone}
@@ -131,9 +214,38 @@ export function NewConversationDialog({
             inputMode="tel"
             disabled={submitting}
             aria-invalid={error ? true : undefined}
-            className="border-border bg-muted text-foreground placeholder-muted-foreground"
+            aria-describedby="new-conversation-echo"
+            className="border-border bg-muted font-mono text-foreground placeholder-muted-foreground"
           />
-          <p className="text-xs text-muted-foreground">{t("hint")}</p>
+
+          {/* Live echo of how the typed value was read. Confirms the
+              split matched the mold BEFORE the round-trip, so a missing
+              country code shows up as "we only see 11 digits" rather
+              than as a puzzling "this number has no WhatsApp". */}
+          <p
+            id="new-conversation-echo"
+            aria-live="polite"
+            className={cn(
+              "min-h-4 text-xs",
+              // Amber, not red, and never disabling the button: this is
+              // a nudge while typing, not a verdict. The server is what
+              // actually decides, and it gives a clearer reason.
+              described.digits.length > 0 && !described.plausible
+                ? "text-amber-500"
+                : "text-muted-foreground",
+            )}
+          >
+            {described.digits.length === 0
+              ? t("hint")
+              : described.parts
+                ? t("echoParsed", {
+                    country: described.parts.country,
+                    area: described.parts.area,
+                    subscriber: described.parts.subscriber,
+                  })
+                : t("echoDigits", { count: described.digits.length })}
+          </p>
+
           {error && (
             <p role="alert" className="text-xs text-destructive">
               {error}
