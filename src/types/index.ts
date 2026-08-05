@@ -180,6 +180,14 @@ export interface Conversation {
   last_message_text?: string;
   last_message_at?: string;
   unread_count: number;
+  /**
+   * When "clear inbox" took this thread off the list (migration 040).
+   * Hidden from every inbox view except the "Archived" filter while
+   * set; the inbound webhook clears it on the next message, so the
+   * thread returns on its own with its history. Distinct from
+   * `status: 'closed'`, which is a deliberate workflow state.
+   */
+  archived_at?: string | null;
   created_at: string;
   updated_at: string;
   contact?: Contact;

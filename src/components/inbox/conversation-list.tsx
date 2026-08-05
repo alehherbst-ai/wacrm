@@ -10,7 +10,8 @@ import {
 import { rowsEqual } from "@/lib/inbox/rows-equal";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X, Users, CheckCheck } from "lucide-react";
+import { Search, ChevronDown, X, Users, CheckCheck, Plus } from "lucide-react";
+import { NewConversationDialog } from "./new-conversation-dialog";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -43,6 +44,11 @@ interface ConversationListProps {
    * instead of waiting for N realtime UPDATEs to round-trip.
    */
   onMarkAllRead?: () => void;
+  /**
+   * Fired after "new conversation" resolves a typed number into a
+   * thread. The parent owns selection, so it decides what to open.
+   */
+  onConversationStarted?: (conversationId: string) => void;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -53,7 +59,7 @@ const STATUS_COLORS: Record<ConversationStatus, string> = {
 
 
 
-type InboxFilter = ConversationStatus | "all" | "unread";
+type InboxFilter = ConversationStatus | "all" | "unread" | "archived";
 
 /**
  * Audience tabs — people vs groups. Orthogonal to the status filter on
@@ -69,6 +75,7 @@ export function ConversationList({
   onConversationsLoaded,
   resyncToken = 0,
   onMarkAllRead,
+  onConversationStarted,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
   // Clearing the inbox is a write to `conversations`, which the
@@ -83,6 +90,10 @@ export function ConversationList({
     { label: t("filterOpen"), value: "open" },
     { label: t("filterPending"), value: "pending" },
     { label: t("filterClosed"), value: "closed" },
+    // Archived threads are hidden from every other view, so this is
+    // the only way back to one before the contact writes again — the
+    // "clear inbox" action would otherwise read as destructive.
+    { label: t("filterArchived"), value: "archived" },
   ], [t]);
 
   const [search, setSearch] = useState("");
@@ -90,6 +101,7 @@ export function ConversationList({
   const [audience, setAudience] = useState<InboxAudience>("all");
   const [loading, setLoading] = useState(true);
   const [clearingInbox, setClearingInbox] = useState(false);
+  const [newConversationOpen, setNewConversationOpen] = useState(false);
   // Contact-based filters (issue #272). Tags use OR logic (a conversation
   // matches if its contact carries any selected tag), consistent with
   // Broadcast audience filtering. Company is an exact match on the field.
@@ -209,10 +221,19 @@ export function ConversationList({
       );
     }
 
-    if (filter === "unread") {
-      result = result.filter((c) => c.unread_count > 0);
-    } else if (filter !== "all") {
-      result = result.filter((c) => c.status === filter);
+    // Archived threads are hidden from every view except their own
+    // (migration 040). Applied before the status filter so "Fechadas"
+    // doesn't quietly resurrect a thread the agent cleared away.
+    if (filter === "archived") {
+      result = result.filter((c) => Boolean(c.archived_at));
+    } else {
+      result = result.filter((c) => !c.archived_at);
+
+      if (filter === "unread") {
+        result = result.filter((c) => c.unread_count > 0);
+      } else if (filter !== "all") {
+        result = result.filter((c) => c.status === filter);
+      }
     }
 
     // Contact-based filters (tags via OR logic, exact company match).
@@ -282,24 +303,29 @@ export function ConversationList({
     [onSelect]
   );
 
-  // How many threads still carry unread messages — drives whether the
-  // "clear inbox" affordance is worth showing at all.
-  const unreadConversations = useMemo(
-    () => conversations.filter((c) => c.unread_count > 0).length,
+  // How many threads the clear action would actually take off the list.
+  // Counts every visible thread, not just unread ones — clearing the
+  // inbox empties it, so the button has work to do whenever anything
+  // is listed.
+  const clearableConversations = useMemo(
+    () => conversations.filter((c) => !c.archived_at).length,
     [conversations],
   );
 
   /**
-   * Mark every unread conversation as read in one shot.
+   * Clear the inbox: mark everything read AND archive it out of the
+   * list. Nothing is deleted — the thread and its messages stay put,
+   * and the next inbound message un-archives it automatically (see the
+   * webhook's conversation update), so the history comes back with it.
    *
-   * The `.gt("unread_count", 0)` filter is what scopes the statement to
-   * rows worth touching; tenancy is enforced by RLS (`conversations_update`
+   * The `.is("archived_at", null)` filter scopes the statement to rows
+   * worth touching; tenancy is enforced by RLS (`conversations_update`
    * → `is_account_member(account_id, 'agent')`), so this can never reach
    * another account's rows even though no account_id filter appears here.
-   * Deliberately clears ALL unread threads, not just the ones passing the
-   * current search/tag filters — "clear inbox" that silently left rows
-   * unread behind a filter the user forgot was active would be worse than
-   * useless.
+   * Deliberately clears ALL visible threads, not just the ones passing
+   * the current search/tab/tag filters — a "clear inbox" that silently
+   * left rows behind a filter the user forgot was active would be worse
+   * than useless.
    */
   const handleClearInbox = useCallback(async () => {
     setClearingInbox(true);
@@ -307,8 +333,8 @@ export function ConversationList({
       const supabase = createClient();
       const { error } = await supabase
         .from("conversations")
-        .update({ unread_count: 0 })
-        .gt("unread_count", 0);
+        .update({ unread_count: 0, archived_at: new Date().toISOString() })
+        .is("archived_at", null);
 
       if (error) {
         console.error("Failed to clear inbox:", {
@@ -322,11 +348,11 @@ export function ConversationList({
       }
 
       onMarkAllRead?.();
-      toast.success(t("clearInboxDone", { count: unreadConversations }));
+      toast.success(t("clearInboxDone", { count: clearableConversations }));
     } finally {
       setClearingInbox(false);
     }
-  }, [onMarkAllRead, t, unreadConversations]);
+  }, [onMarkAllRead, t, clearableConversations]);
 
   const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
 
@@ -370,14 +396,28 @@ export function ConversationList({
           ))}
         </div>
 
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={handleSearchChange}
-            placeholder={t("searchPlaceholder")}
-            className="border-border bg-muted pl-9 text-sm text-foreground placeholder-muted-foreground focus:border-primary/50"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={handleSearchChange}
+              placeholder={t("searchPlaceholder")}
+              className="border-border bg-muted pl-9 text-sm text-foreground placeholder-muted-foreground focus:border-primary/50"
+            />
+          </div>
+          {/* Reach out first. Gated on the same role as sending, since
+              that's what the thread exists to do. */}
+          {canSendMessages && (
+            <button
+              onClick={() => setNewConversationOpen(true)}
+              title={t("newConversation")}
+              aria-label={t("newConversation")}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground transition-opacity hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-1">
@@ -499,7 +539,7 @@ export function ConversationList({
               pushes it to the far right of the filter row so it reads as
               an action rather than another filter. Only shown when there
               is something to clear and the role is allowed to write. */}
-          {canSendMessages && unreadConversations > 0 && (
+          {canSendMessages && clearableConversations > 0 && (
             <button
               onClick={handleClearInbox}
               disabled={clearingInbox}
@@ -583,6 +623,12 @@ export function ConversationList({
           </div>
         )}
       </ScrollArea>
+
+      <NewConversationDialog
+        open={newConversationOpen}
+        onOpenChange={setNewConversationOpen}
+        onStarted={(conversationId) => onConversationStarted?.(conversationId)}
+      />
     </div>
   );
 }

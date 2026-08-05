@@ -530,17 +530,68 @@ function InboxPageInner() {
 
   /**
    * Mirror a successful "clear inbox" locally. The server write already
-   * happened inside ConversationList; this just zeroes the badges now
-   * rather than waiting on one realtime UPDATE per cleared thread.
+   * happened inside ConversationList; this reflects it now rather than
+   * waiting on one realtime UPDATE per cleared thread.
+   *
+   * Clearing both reads and archives (migration 040), so the badges
+   * zero AND the rows leave the list. The archive stamp is only for the
+   * local mirror — the authoritative value is whatever the server wrote,
+   * which the next refetch reconciles.
    */
   const handleMarkAllRead = useCallback(() => {
+    const archivedAt = new Date().toISOString();
     setConversations((prev) =>
-      prev.map((c) => (c.unread_count > 0 ? { ...c, unread_count: 0 } : c)),
+      prev.map((c) =>
+        c.archived_at
+          ? c
+          : { ...c, unread_count: 0, archived_at: archivedAt },
+      ),
     );
     setActiveConversation((prev) =>
-      prev && prev.unread_count > 0 ? { ...prev, unread_count: 0 } : prev,
+      prev && !prev.archived_at
+        ? { ...prev, unread_count: 0, archived_at: archivedAt }
+        : prev,
     );
   }, []);
+
+  /**
+   * Open the thread that "new conversation" just resolved from a typed
+   * number.
+   *
+   * Fetches the row directly rather than waiting for the list refetch:
+   * a brand-new thread has no messages and no `last_message_at`, so
+   * nothing about it would arrive over realtime, and the agent clicked
+   * "start" expecting to land in it right away.
+   */
+  const handleConversationStarted = useCallback(
+    async (conversationId: string) => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("conversations")
+        .select(CONVERSATION_SELECT)
+        .eq("id", conversationId)
+        .maybeSingle();
+
+      if (error || !data) {
+        console.error("Failed to open the new conversation:", error);
+        toast.error(t("startConversationOpenError"));
+        return;
+      }
+
+      const conv = normalizeConversation(data);
+      setConversations((prev) =>
+        prev.some((c) => c.id === conv.id)
+          ? prev.map((c) => (c.id === conv.id ? { ...c, ...conv } : c))
+          : [conv, ...prev],
+      );
+      setActiveConversation(conv);
+      setActiveContact(conv.contact ?? null);
+      setMessages([]);
+      autoSelectedForDeepLinkRef.current = conv.id;
+      router.replace(`/inbox?c=${conv.id}`, { scroll: false });
+    },
+    [router, t],
+  );
 
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {
     setMessages(loaded);
@@ -631,6 +682,7 @@ function InboxPageInner() {
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
             onMarkAllRead={handleMarkAllRead}
+            onConversationStarted={handleConversationStarted}
           />
         </div>
 

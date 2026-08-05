@@ -126,7 +126,8 @@
   },
   "Inbox": {
     "page": {
-      "whatsappNotConnected": "O WhatsApp® não está conectado. Vá em Configurações para conectar sua conta."
+      "whatsappNotConnected": "O WhatsApp® não está conectado. Vá em Configurações para conectar sua conta.",
+      "startConversationOpenError": "A conversa foi criada, mas não foi possível abri-la. Atualize a página."
     },
     "conversationList": {
       "searchPlaceholder": "Buscar conversas...",
@@ -139,6 +140,8 @@
       "filterOpen": "Abertas",
       "filterPending": "Pendentes",
       "filterClosed": "Fechadas",
+      "filterArchived": "Arquivadas",
+      "newConversation": "Nova conversa",
       "tags": "Tags",
       "company": "Empresa",
       "allCompanies": "Todas as empresas",
@@ -147,8 +150,21 @@
       "noMessagesYet": "Nenhuma mensagem ainda",
       "unknown": "Desconhecido",
       "clearInbox": "Limpar caixa",
-      "clearInboxDone": "{count} {count, plural, =1 {conversa marcada} other {conversas marcadas}} como lida",
+      "clearInboxDone": "{count} {count, plural, =1 {conversa arquivada} other {conversas arquivadas}}",
       "clearInboxError": "Não foi possível limpar a caixa de entrada"
+    },
+    "newConversation": {
+      "title": "Nova conversa",
+      "description": "Digite o número de quem você quer contatar. Vamos conferir se ele tem WhatsApp antes de abrir a conversa.",
+      "placeholder": "5548912345678",
+      "hint": "Com código do país e DDD, apenas números.",
+      "cancel": "Cancelar",
+      "start": "Abrir conversa",
+      "checking": "Verificando...",
+      "errorInvalidNumber": "Esse número não parece válido. Confira o código do país e o DDD.",
+      "errorNotOnWhatsapp": "Esse número não tem WhatsApp.",
+      "errorNotConnected": "Conecte um número em Configurações → WhatsApp antes de iniciar conversas.",
+      "errorGeneric": "Não foi possível abrir a conversa. Tente de novo."
     },
     "messageThread": {
       "backToConversations": "Voltar para conversas",

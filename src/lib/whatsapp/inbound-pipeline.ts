@@ -226,6 +226,12 @@ export async function processInboundMessage(
       last_message_at: new Date().toISOString(),
       unread_count: (conversation.unread_count || 0) + 1,
       updated_at: new Date().toISOString(),
+      // A new inbound message un-archives the thread (migration 040):
+      // "clear inbox" hides conversations, it doesn't end them, so the
+      // contact writing again brings the thread back with its history.
+      // Unconditional because writing NULL over NULL costs nothing and
+      // keeps this a single statement.
+      archived_at: null,
     })
     .eq('id', conversation.id);
 

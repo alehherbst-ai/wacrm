@@ -300,6 +300,84 @@ export async function getGroupInfo(args: GetGroupInfoArgs): Promise<GroupInfo> {
 }
 
 // ============================================================
+// Number lookup
+// ============================================================
+
+export interface CheckNumberArgs {
+  instanceToken: string;
+  /** Digits only, international format (no `+`). */
+  number: string;
+}
+
+export interface CheckedNumber {
+  /** Whether WhatsApp knows this number at all. */
+  isInWhatsapp: boolean;
+  /**
+   * WhatsApp's own JID for the number. Worth trusting over the digits
+   * that were typed: WhatsApp canonicalises numbers (Brazilian mobiles
+   * gained a 9th digit, and both forms are still typed by humans), and
+   * messages route to the canonical form. Absent when the number isn't
+   * registered.
+   */
+  jid: string | null;
+  /** Business/verified display name, when the account publishes one. */
+  verifiedName: string | null;
+}
+
+/**
+ * Ask WhatsApp whether a number is reachable, before opening a thread
+ * for it.
+ *
+ * Without this, "start a conversation" would happily create a contact
+ * and a conversation for a typo, and the failure would only surface
+ * later as a send error against a thread that should never have
+ * existed.
+ *
+ * The endpoint takes a batch; this wraps the single-number case because
+ * that's the only shape the app needs, and it lets the caller treat a
+ * missing entry as "not found" rather than juggling an array.
+ */
+export async function checkNumber(
+  args: CheckNumberArgs
+): Promise<CheckedNumber> {
+  const { instanceToken, number } = args;
+  const response = await fetch(`${requireBaseUrl()}/chat/check`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', token: instanceToken },
+    body: JSON.stringify({ numbers: [number] }),
+    // Bounded: a person is staring at a spinner waiting for this.
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok) {
+    await throwUazapiError(response, `UAZAPI error: ${response.status}`);
+  }
+
+  const data = (await response.json()) as
+    | {
+        query?: string;
+        jid?: string;
+        isInWhatsapp?: boolean;
+        verifiedName?: string;
+        error?: string;
+      }[]
+    | null;
+
+  const entry = Array.isArray(data) ? data[0] : null;
+  // No entry at all means the provider had nothing to say about the
+  // number — treated as "not on WhatsApp" rather than as an error, so
+  // the caller shows one clear message instead of two.
+  if (!entry || !entry.isInWhatsapp || !entry.jid) {
+    return { isInWhatsapp: false, jid: null, verifiedName: null };
+  }
+
+  return {
+    isInWhatsapp: true,
+    jid: entry.jid,
+    verifiedName: entry.verifiedName || null,
+  };
+}
+
+// ============================================================
 // Profile pictures
 // ============================================================
 

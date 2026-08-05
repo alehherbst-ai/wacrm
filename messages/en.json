@@ -126,7 +126,8 @@
   },
   "Inbox": {
     "page": {
-      "whatsappNotConnected": "WhatsApp® is not connected. Go to Settings to connect your account."
+      "whatsappNotConnected": "WhatsApp® is not connected. Go to Settings to connect your account.",
+      "startConversationOpenError": "The conversation was created but couldn't be opened. Refresh the page."
     },
     "conversationList": {
       "searchPlaceholder": "Search conversations...",
@@ -139,6 +140,8 @@
       "filterOpen": "Open",
       "filterPending": "Pending",
       "filterClosed": "Closed",
+      "filterArchived": "Archived",
+      "newConversation": "New conversation",
       "tags": "Tags",
       "company": "Company",
       "allCompanies": "All companies",
@@ -147,8 +150,21 @@
       "noMessagesYet": "No messages yet",
       "unknown": "Unknown",
       "clearInbox": "Clear inbox",
-      "clearInboxDone": "{count} {count, plural, =1 {conversation} other {conversations}} marked as read",
+      "clearInboxDone": "{count} {count, plural, =1 {conversation} other {conversations}} archived",
       "clearInboxError": "Couldn't clear the inbox"
+    },
+    "newConversation": {
+      "title": "New conversation",
+      "description": "Enter the number you want to reach. We'll check it has WhatsApp before opening the thread.",
+      "placeholder": "5548912345678",
+      "hint": "Country code and area code, digits only.",
+      "cancel": "Cancel",
+      "start": "Open conversation",
+      "checking": "Checking...",
+      "errorInvalidNumber": "That doesn't look like a valid number. Check the country and area code.",
+      "errorNotOnWhatsapp": "That number doesn't have WhatsApp.",
+      "errorNotConnected": "Connect a number in Settings → WhatsApp before starting conversations.",
+      "errorGeneric": "Couldn't open the conversation. Try again."
     },
     "messageThread": {
       "backToConversations": "Back to conversations",

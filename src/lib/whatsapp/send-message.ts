@@ -391,6 +391,10 @@ export async function sendMessageToConversation(
       last_message_text: lastMessageText,
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      // Sending into an archived thread brings it back into the inbox
+      // (migration 040) — the agent just made it active again, so it
+      // has no business staying hidden from the list.
+      archived_at: null,
     })
     .eq('id', conversationId);
 

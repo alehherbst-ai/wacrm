@@ -6,6 +6,48 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-04] "Limpar caixa" arquiva de verdade; iniciar conversa por número
+
+> **Requer migration.** `supabase/migrations/040_conversation_archive.sql` precisa ser
+> aplicada no Supabase. Sem ela a coluna `archived_at` não existe e tanto o "Limpar
+> caixa" quanto o filtro "Arquivadas" falham.
+
+### 1. Limpar caixa passa a esvaziar a caixa
+
+**Antes:** o botão só zerava `unread_count`. As conversas continuavam todas ali, então "limpar" não limpava nada visualmente — só apagava os contadores.
+
+**Depois:** as conversas saem da lista. Nada é apagado: a conversa e todas as mensagens ficam onde estavam, e **a próxima mensagem do contato traz a conversa de volta com o histórico inteiro**, automaticamente.
+
+- Implementado como uma coluna `archived_at`, **não** reaproveitando o `status`. O status (aberta/pendente/fechada) é um estado de trabalho que o atendente escolhe de propósito, e a caixa tem um filtro para ele. Arquivar é um estado de *visualização* que a próxima mensagem desfaz sozinha. Sobrecarregar "fechada" para também significar "escondida" deixaria uma conversa reaberta indistinguível de uma que o atendente fechou de propósito, e transformaria o filtro "Fechadas" numa gaveta de entulho.
+- Novo filtro **"Arquivadas"**, porque sem ele o botão viraria um caminho sem volta: a conversa some de todas as visões e só reaparece se o contato escrever. Com o filtro, o atendente sempre consegue voltar.
+- Enviar uma mensagem para uma conversa arquivada também a desarquiva — o atendente acabou de torná-la ativa, não faz sentido ela continuar escondida.
+- O contador do aviso mudou de "conversas não lidas" para "conversas visíveis": o botão agora esvazia a caixa, então tem trabalho a fazer sempre que houver algo listado, não só quando houver não lidas.
+
+### 2. Iniciar conversa com quem nunca escreveu
+
+**Antes:** só era possível responder quem já tinha mandado mensagem. Não havia como abordar alguém ativamente.
+
+**Depois:** botão "+" ao lado da busca abre um diálogo para digitar o número. O sistema **valida no WhatsApp antes de gravar qualquer coisa** e, se for válido, abre a conversa já selecionada.
+
+- Validar antes de escrever é o ponto: sem a checagem, um erro de digitação deixaria um contato permanente e uma conversa vazia no banco, e o problema só apareceria depois como falha de envio.
+- A identidade do contato vem do **JID que o WhatsApp devolve**, não dos dígitos digitados. O WhatsApp canoniza números (celulares brasileiros ganharam o 9º dígito e as pessoas ainda digitam as duas formas) e as mensagens roteiam para a forma canônica — gravar o que foi digitado criaria um contato para o qual não conseguimos entregar de forma confiável, e uma duplicata de um que talvez já exista.
+- Se já existe conversa com aquele contato, ela é **reaproveitada e desarquivada** em vez de abrir uma segunda. É o caso comum de "essa pessoa já falou comigo e eu arquivei".
+- Erros distintos ganham mensagens distintas: número malformado, número real sem WhatsApp, e WhatsApp não conectado pedem correções diferentes.
+- Limite de 20/min por usuário. Cada chamada é uma consulta ao WhatsApp sobre um número arbitrário, então o limite também serve de freio contra usar a caixa de entrada como oráculo de "esse número tem WhatsApp?".
+- Gate de papel `agent`, o mesmo do envio — é para isso que a conversa existe.
+
+**Verificação:** build limpo, typecheck limpo, lint 0 erros, paridade de i18n passando, 528 testes passando (as 5 falhas de fuso/ICU são pré-existentes). 7 testes novos cobrindo o parsing do `/chat/check`, incluindo os casos em que ele responde 200 com corpo inútil.
+
+**Não verificado ao vivo:** o token da instância UAZAPI expirou de novo durante o trabalho (`401 Invalid token` — é o servidor público de demonstração, instâncias expiram). O `/chat/check` foi implementado conforme a especificação e testado com respostas simuladas, mas **não foi exercitado contra o provedor real**. Testar assim que reconectar o QR Code.
+
+Arquivos: `supabase/migrations/040_conversation_archive.sql` (novo),
+`src/app/api/whatsapp/conversations/start/route.ts` (novo),
+`src/components/inbox/new-conversation-dialog.tsx` (novo),
+`src/lib/whatsapp/check-number.test.ts` (novo), `src/lib/whatsapp/uazapi-api.ts`,
+`src/lib/whatsapp/inbound-pipeline.ts`, `src/lib/whatsapp/send-message.ts`,
+`src/lib/rate-limit.ts`, `src/components/inbox/conversation-list.tsx`,
+`src/app/(dashboard)/inbox/page.tsx`, `src/types/index.ts`, `messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-04] Abas de Contatos/Grupos e tags visíveis na caixa de entrada
 
 **Antes:** a caixa de entrada misturava conversas individuais e grupos numa lista só, sem como separar. E as tags de um contato só existiam no painel lateral — para saber se uma conversa estava marcada era preciso abri-la.
