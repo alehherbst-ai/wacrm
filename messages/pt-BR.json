@@ -276,7 +276,8 @@
       "tagUpdateError": "Não foi possível atualizar as tags.",
       "newDeal": "Novo negócio",
       "newDealInPipeline": "Criar negócio no funil",
-      "noPipelines": "Nenhum funil criado ainda. Crie um em Funis."
+      "noPipelines": "Nenhum funil criado ainda. Crie um em Funis.",
+      "editDeal": "Editar negócio"
     },
     "aiBanner": {
       "pausedTitle": "O assistente de IA está pausado aqui",

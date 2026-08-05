@@ -276,7 +276,8 @@
       "tagUpdateError": "태그를 업데이트할 수 없습니다.",
       "newDeal": "새 거래",
       "newDealInPipeline": "파이프라인에 거래 만들기",
-      "noPipelines": "파이프라인이 없습니다. 파이프라인에서 만드세요."
+      "noPipelines": "파이프라인이 없습니다. 파이프라인에서 만드세요.",
+      "editDeal": "거래 편집"
     },
     "aiBanner": {
       "pausedTitle": "이 대화에서 AI 어시스턴트가 일시 중지됨",

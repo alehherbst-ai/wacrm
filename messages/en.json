@@ -276,7 +276,8 @@
       "tagUpdateError": "Couldn't update tags.",
       "newDeal": "New deal",
       "newDealInPipeline": "Create deal in pipeline",
-      "noPipelines": "No pipelines yet. Create one in Pipelines."
+      "noPipelines": "No pipelines yet. Create one in Pipelines.",
+      "editDeal": "Edit deal"
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",

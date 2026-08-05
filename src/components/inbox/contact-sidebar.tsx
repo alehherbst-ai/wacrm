@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { addContactTag, deleteContactTag } from "@/lib/contacts/tag-api";
+import { formatCurrency } from "@/lib/currency";
 import type {
   Contact,
   Deal,
@@ -73,6 +74,12 @@ export function ContactSidebar({ contact, onTagsChanged }: ContactSidebarProps) 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [dealPipelineId, setDealPipelineId] = useState<string | null>(null);
+  /**
+   * The deal being edited. Separate from `dealPipelineId` (which only
+   * drives NEW deals): an existing deal already knows its pipeline, so
+   * asking which one to use would be nonsense.
+   */
+  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -224,6 +231,16 @@ export function ContactSidebar({ contact, onTagsChanged }: ContactSidebarProps) 
   const stagesForDealPipeline = useMemo(
     () => stages.filter((s) => s.pipeline_id === dealPipelineId),
     [stages, dealPipelineId],
+  );
+
+  /**
+   * Stages of the edited deal's OWN pipeline. The form's stage picker
+   * has to be scoped to it — offering another pipeline's stages would
+   * let a save move the deal onto a stage that doesn't belong to it.
+   */
+  const stagesForEditingDeal = useMemo(
+    () => stages.filter((s) => s.pipeline_id === editingDeal?.pipeline_id),
+    [stages, editingDeal],
   );
 
   if (!contact) {
@@ -450,18 +467,23 @@ export function ContactSidebar({ contact, onTagsChanged }: ContactSidebarProps) 
                 <p className="px-1 text-xs text-muted-foreground">{tSidebar("noDeals")}</p>
               ) : (
                 deals.map((deal) => (
-                  <div
+                  <button
                     key={deal.id}
-                    className="rounded-lg bg-muted px-3 py-2"
+                    type="button"
+                    onClick={() => canSendMessages && setEditingDeal(deal)}
+                    disabled={!canSendMessages}
+                    title={canSendMessages ? tSidebar("editDeal") : undefined}
+                    className="w-full rounded-lg bg-muted px-3 py-2 text-left transition-colors enabled:hover:bg-muted/70 disabled:cursor-default"
                   >
                     <p className="text-sm font-medium text-foreground">
                       {deal.title}
                     </p>
                     <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>
-                        {deal.currency ?? "$"}
-                        {deal.value.toLocaleString()}
-                      </span>
+                      {/* Was concatenating the raw ISO code onto the
+                          number ("BRL15.000"). `formatCurrency` is the
+                          app's shared formatter and renders the proper
+                          symbol and grouping for the locale. */}
+                      <span>{formatCurrency(deal.value, deal.currency)}</span>
                       {deal.stage && (
                         <span
                           className="rounded-full px-1.5 py-0.5 text-[10px]"
@@ -481,7 +503,7 @@ export function ContactSidebar({ contact, onTagsChanged }: ContactSidebarProps) 
                         {deal.pipeline.name}
                       </p>
                     )}
-                  </div>
+                  </button>
                 ))
               )}
             </div>
@@ -548,6 +570,25 @@ export function ContactSidebar({ contact, onTagsChanged }: ContactSidebarProps) 
           defaultContactId={contact.id}
           onSaved={() => {
             setDealPipelineId(null);
+            void fetchContactData();
+          }}
+        />
+      )}
+
+      {/* Edit sheet. Same form as the pipeline board uses, so stage,
+          value, currency and title all behave identically wherever a
+          deal is edited from. */}
+      {editingDeal && (
+        <DealForm
+          open
+          onOpenChange={(next) => {
+            if (!next) setEditingDeal(null);
+          }}
+          deal={editingDeal}
+          pipelineId={editingDeal.pipeline_id}
+          stages={stagesForEditingDeal}
+          onSaved={() => {
+            setEditingDeal(null);
             void fetchContactData();
           }}
         />

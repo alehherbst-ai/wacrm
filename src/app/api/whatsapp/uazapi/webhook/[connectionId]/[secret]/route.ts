@@ -52,6 +52,17 @@ interface UazapiMessage {
   reaction?: string;
   buttonOrListid?: string;
   /**
+   * The human-readable choice for a poll vote, list selection or button
+   * tap — "Dados de votação de enquete e listas" per the spec.
+   *
+   * Load-bearing: when a customer taps a button, `text` is EMPTY and
+   * only this field carries the label. Confirmed against a real reply
+   * (`messageType: TemplateButtonReplyMessage`, `buttonOrListid: btn_1`,
+   * `vote: abc`, no text) — reading only `text` filed those replies with
+   * no content at all and they rendered as blank bubbles.
+   */
+  vote?: string;
+  /**
    * Present on messages UAZAPI has already materialised a file for.
    * Inbound deliveries generally arrive WITHOUT it — the bytes are
    * still encrypted on WhatsApp's CDN — which is what
@@ -216,7 +227,12 @@ function toNormalizedMessage(msg: UazapiMessage): NormalizedInboundMessage | nul
     senderName,
     timestamp,
     contentType,
-    contentText: msg.text || null,
+    // `vote` is the fallback because a button tap / list pick / poll
+    // vote carries its label there and leaves `text` empty; without it
+    // the reply is stored with no content and renders as an empty
+    // bubble. `text` still wins when both are set — an ordinary message
+    // is never a vote.
+    contentText: msg.text || msg.vote || null,
     // Resolved separately by the caller, which has the instance token
     // needed to fetch the file (see resolveMediaUrl).
     mediaUrl: null,

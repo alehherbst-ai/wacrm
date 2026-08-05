@@ -6,6 +6,36 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-05] Resposta a mensagem interativa chegava vazia; negócios editáveis no painel
+
+### 1. Resposta de botão vinha sem texto
+
+**Antes:** quando o cliente tocava um botão de uma mensagem interativa, a mensagem aparecia como um balão vazio no chat.
+
+**Causa:** o normalizador do webhook lia só `msg.text`. Numa resposta de botão o `text` vem **vazio** — o rótulo tocado viaja em **`vote`**. Comprovado contra a mensagem real no histórico do provedor: `messageType: TemplateButtonReplyMessage`, `buttonOrListid: btn_1`, `vote: abc`, sem `text`. A especificação descreve o campo como "Dados de votação de enquete e listas", ou seja, ele serve enquete, lista e botão.
+
+O roteamento nunca quebrou — o `buttonOrListid` sempre chegou, então os Fluxos avançavam corretamente. O que faltava era só o texto visível, o que fazia parecer que a resposta tinha sumido.
+
+**Depois:** `contentText` passa a cair em `vote` quando `text` está vazio. O `text` continua tendo precedência — uma mensagem comum nunca é um voto. Como efeito colateral, o título da resposta que vai para o motor de Fluxos também deixa de ser string vazia.
+
+Reparei em produção a 1 mensagem que já tinha ficado em branco, recuperando o rótulo (`btn_1` → "abc") do histórico do provedor.
+
+### 2. Negócios não eram editáveis pelo painel do contato, e o valor mostrava "BRL"
+
+**Antes:** o cartão do negócio no painel lateral era só leitura — para mudar etapa, valor ou nome era preciso ir até o funil. E o valor era montado concatenando o código ISO cru com o número, produzindo `BRL15.000`.
+
+**Depois:**
+- Clicar no negócio abre o **mesmo formulário** que o quadro de funis usa, em modo de edição. Etapa, valor, moeda e nome se comportam igual em qualquer lugar de onde o negócio seja editado, porque é literalmente o mesmo componente.
+- O seletor de etapas é limitado ao funil **do próprio negócio**. Oferecer as etapas de outro funil deixaria salvar o negócio numa etapa que não pertence a ele.
+- Estado de edição separado do de criação: um negócio existente já sabe seu funil, então perguntar qual usar seria absurdo — essa pergunta só faz sentido ao criar.
+- O valor passa a usar o `formatCurrency` compartilhado do app, que rende o símbolo e o agrupamento certos: **R$ 15.000**.
+- Só quem tem permissão de escrita (agente ou acima) consegue abrir a edição.
+
+**Verificação:** build limpo, typecheck limpo, lint 0 erros, paridade de i18n passando, 549 testes passando (as 5 falhas de fuso/ICU são pré-existentes). A causa do balão vazio foi confirmada contra a mensagem real na instância, não inferida.
+
+Arquivos: `src/app/api/whatsapp/uazapi/webhook/[connectionId]/[secret]/route.ts`,
+`src/components/inbox/contact-sidebar.tsx`, `messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-05] Cabeçalho do chat: foto, tags e botão de recolher reposicionado
 
 **Antes:** o cabeçalho da conversa mostrava só a inicial do contato num círculo cinza, não mostrava tags, e o botão de recolher o painel de informações ficava no meio dos controles da conversa (antes do atualizar, do status e do atribuir).
