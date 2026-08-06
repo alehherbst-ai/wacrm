@@ -9,6 +9,78 @@ Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and semantic versioning: `MAJOR` for breaking changes, `MINOR` for new
 modules, `PATCH` for fixes and polish.
 
+## [2.1.0] — 2026-08-06
+
+Conversations continued on the phone are no longer lost, signing in
+stops failing silently, and follow-up work can be scheduled without
+leaving the thread.
+
+> **Migration required:** apply
+> `supabase/migrations/043_invite_ignores_empty_pipeline.sql`.
+> It replaces the `redeem_invitation()` function in place — same
+> signature, same error codes — so nothing else needs to change.
+
+> **The state before multi-operator support.** This release is the last
+> one where an account has exactly one WhatsApp number and every member
+> shares one inbox. It is tagged `marco/numero-unico-caixa-compartilhada`
+> and mirrored on the `legacy/numero-unico-caixa-compartilhada` branch:
+> `git switch -c restaura-numero-unico marco/numero-unico-caixa-compartilhada`
+>
+> Note that the tag restores **code only**. Migrations already applied to
+> Supabase stay applied; see the rollback notes shipped with each
+> migration from `044` onward.
+
+### Added
+
+- **Activities in the inbox.** The contact panel gained an Activities
+  section between Deals and Notes, so a follow-up can be scheduled
+  without leaving the conversation. The activity is bound to the
+  conversation's contact and shows up on the board, the calendar and the
+  contact tab.
+- **Saved contacts when starting a conversation.** The New conversation
+  dialog now opens on your saved contacts, searchable by name, company or
+  number, with manual number entry behind a tab. Retyping a number you
+  had already stored was both slower and how duplicate contacts appeared.
+- **Contact suggestions from the first keystroke** in inbox search, and
+  matching on company and on phone digits in both the search and the
+  suggestions.
+
+### Fixed
+
+- **Messages typed in the WhatsApp app now reach the CRM.** The webhook
+  discarded everything flagged `fromMe`, meaning to drop the echo of the
+  app's own sends — but that flag also covers messages typed on the
+  connected number's other devices. Any conversation continued outside
+  the CRM kept only the customer's half. Those messages are now recorded
+  as agent messages, without firing flows, automations or the AI
+  auto-reply, and without a duplicate when a delivery repeats.
+- **Signing in no longer fails silently.** A failed session check was
+  read as a sign-out, so a network blip, a 429 from the auth rate limiter
+  or a Supabase 5xx bounced the user back to a blank login form moments
+  after they had entered correct credentials. Only a real verdict
+  redirects now, the check runs on far fewer requests, and a turned-away
+  request explains itself and returns the user to where they were headed.
+- **Invitations are no longer refused over an untouched default funnel.**
+  The Pipelines screen seeds a funnel on first visit, and the guard that
+  protects an invitee's data counted its existence as data — so opening
+  a menu before accepting forced the invitee to register a second email.
+  A funnel now counts only when it holds deals.
+- **Errors show an error page.** The app had no error boundaries, so any
+  exception left the browser rendering raw React payload text. Added at
+  the root, the dashboard segment and the root layout, each showing the
+  digest that ties the screen to the server log. Also closed the gap
+  where `/activities`, `/flows`, `/agents` and `/notifications` skipped
+  the unauthenticated redirect.
+
+### Changed
+
+- `middleware.ts` is now `proxy.ts`, following the Next 16 deprecation
+  the build had begun warning about. File and function rename only.
+
+### Security
+
+- `.env.local.example` ships placeholders instead of real credentials.
+
 ## [2.0.0] — 2026-08-05
 
 **WhatsApp now connects by QR code, not by Meta.** The official Cloud
