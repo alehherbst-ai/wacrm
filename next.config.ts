@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 
+import { PROTECTED_PREFIXES } from "./src/lib/auth/session-gate";
+
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 /**
@@ -122,12 +124,39 @@ const nextConfig: NextConfig = {
    *     chunk-hash drift self-heals within ~5 min with no user-
    *     visible latency.
    *
-   *   Note: dynamic dashboard routes (/inbox, /contacts, /pipelines,
-   *   /broadcasts, etc.) are server-rendered per request — Next.js
-   *   and Supabase auth already prevent them from being served
-   *   from a shared cache. The s-maxage here is a ceiling; Next.js
-   *   and auth middleware still set `private` / `no-store` for
-   *   per-user responses.
+   *   - authenticated app routes — `private, no-store`. See below.
+   *
+   * Why the authenticated routes are carved out (issue: raw RSC
+   * payload rendered as text on /dashboard)
+   *
+   *   The note that used to sit here claimed the dashboard routes were
+   *   "server-rendered per request" and therefore safe from a shared
+   *   cache. They are not: they are client components, so Next
+   *   prerenders their shell as STATIC (`○` in the build output) and
+   *   this rule then stamped `public, s-maxage=300,
+   *   stale-while-revalidate=86400` on them.
+   *
+   *   One URL, two very different responses: a browser navigation gets
+   *   HTML, while the App Router's own fetches (prefetch, client
+   *   navigation) get the RSC flight payload for the SAME path,
+   *   distinguished only by the `RSC` request header. Next says so via
+   *   `Vary: RSC, Next-Router-State-Tree, …` — but a CDN that ignores
+   *   Vary (Hostinger's does, which is the same edge that caused the
+   *   stale-chunk incident above) keys both on the path alone.
+   *   Whichever response lands in the cache first is served to
+   *   everyone for the next 5 minutes — and for up to 24 h more while
+   *   it revalidates.
+   *
+   *   When the flight payload wins that race, the next person to open
+   *   /dashboard receives it AS THE DOCUMENT: a page of
+   *   `0:{"tree":…,"buildId":…}` and no HTML at all. Nothing throws,
+   *   which is why the error boundaries added for this symptom never
+   *   caught it — the application never ran.
+   *
+   *   `no-store` on every authenticated path removes the shared cache
+   *   from the equation entirely. These pages are per-user and behind
+   *   a session; there was never anything to gain by caching them at
+   *   the edge.
    *
    * Security headers are appended via a separate catch-all rule
    * below — Next.js merges headers from every matching rule, so
@@ -135,13 +164,34 @@ const nextConfig: NextConfig = {
    * matched.
    */
   async headers() {
+    // Kept in step with PROTECTED_PREFIXES in src/lib/auth/session-gate.ts
+    // by importing the same list — a route added there and forgotten
+    // here would silently go back to being edge-cached.
+    const authed = PROTECTED_PREFIXES.map((path) => path.replace(/^\//, ""));
+    const authedAlternation = authed.join("|");
+
     return [
       {
         source: "/api/:path*",
         headers: [{ key: "Cache-Control", value: "no-store" }],
       },
       {
-        source: "/:path((?!_next/static|_next/image|api).*)",
+        // Every authenticated section, and `/join/:token` with it —
+        // that page reads an invitation tied to one visitor.
+        source: `/:path(${authedAlternation}|join)/:rest*`,
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "private, no-store, must-revalidate",
+          },
+        ],
+      },
+      {
+        // Public pages only. The authed prefixes are excluded rather
+        // than merely overridden: Next merges the headers of EVERY
+        // matching rule, so leaving them in would emit two conflicting
+        // Cache-Control values and let the CDN pick.
+        source: `/:path((?!_next/static|_next/image|api|join|${authedAlternation}).*)`,
         headers: [
           {
             key: "Cache-Control",
