@@ -69,8 +69,27 @@ export async function middleware(request: NextRequest) {
     return withRefreshedCookies(NextResponse.redirect(url))
   }
 
-  // Protected pages - redirect to login if not authenticated
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/automations', '/settings']
+  // Protected pages - redirect to login if not authenticated.
+  //
+  // This list has to cover EVERY authenticated route. Sections added
+  // after it was written (activities, flows, agents, notifications)
+  // were missing, so an unauthenticated visit to them skipped the
+  // redirect and fell through to the app shell, which then bounced to
+  // /login from the client — a flash of the empty CRM first, and a
+  // pointless render of a page whose queries RLS was always going to
+  // refuse.
+  const protectedPaths = [
+    '/dashboard',
+    '/inbox',
+    '/contacts',
+    '/activities',
+    '/pipelines',
+    '/automations',
+    '/flows',
+    '/agents',
+    '/notifications',
+    '/settings',
+  ]
   if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'

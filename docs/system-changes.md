@@ -6,6 +6,39 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-06] Erro no app virava tela de payload cru; rotas novas sem proteção
+
+**Antes:** ao entrar com uma conta de agente recém-criada, a tela mostrou o payload bruto do React Server Components como texto puro (`:HL[...]`, `0:{"tree":...}`) — ilegível, sem mensagem e sem saída além da barra de endereço.
+
+**Investigação.** Comecei pelos dados: o agente tinha perfil, `account_id` e `account_role` corretos, e a conta existia — nenhum órfão. O middleware não ramifica por papel. O `useAuth` já é bem defensivo (try/catch/finally e timer de segurança) e o carregador de i18n já tem fallback. **Não consegui reproduzir nem apontar o `throw` exato** por leitura estática, e digo isso abertamente.
+
+O que ficou inequívoco foi outra coisa: **o projeto não tinha nenhum error boundary.** Nem `error.tsx`, nem `global-error.tsx`, nem `not-found.tsx`. Sem eles, qualquer exceção derruba a árvore inteira e o navegador fica exibindo o que sobrou do stream — exatamente a tela do print. A causa raiz do *sintoma* é essa ausência, independente de qual erro disparou.
+
+**Depois:**
+- **`global-error.tsx`** — captura falha do layout raiz, o único lugar que um `error.tsx` comum não alcança (ele vive dentro do layout que quebrou). Renderiza o próprio `<html>`/`<body>`, sem i18n, sem design system e com estilos inline: o layout raiz é onde moram o provedor de locale e o script de tema, então qualquer import de lá pode ser justamente o que falhou.
+- **`error.tsx`** na raiz e **`(dashboard)/error.tsx`** por segmento. O do dashboard mantém menu e cabeçalho de pé, então uma tela quebrada vira "o Painel falhou", não "o CRM caiu".
+- Os três mostram o **`digest`** do erro. Em build de produção a mensagem real é removida, e o digest é o único elo com o log do servidor.
+- **`not-found.tsx`** — sem ele, uma URL errada servia o 404 cru do Next, indistinguível de app quebrado.
+- **Middleware: rotas novas estavam desprotegidas.** `protectedPaths` não incluía `/activities`, `/flows`, `/agents` nem `/notifications` — visitá-las sem sessão pulava o redirecionamento e caía no shell, que só então mandava para o login pelo cliente. Um piscar do CRM vazio e um render inútil de páginas cujas consultas o RLS ia recusar de qualquer forma.
+
+**Verificação — em execução, não só compilando.** Subi o build de produção e testei via HTTP:
+
+| Teste | Resultado |
+|---|---|
+| URL inexistente | 404, `text/html`, página traduzida |
+| `/dashboard` sem sessão | 307 → `/login` |
+| `/activities` sem sessão (o buraco) | 307 → `/login` |
+| Rota que lança no servidor | 500, `text/html`, **nenhum payload cru no corpo** |
+
+Duas tentativas de teste foram inválidas antes de acertar, e vale registrar: uma pasta iniciada com `_` é privada no Next e não vira rota (caiu no 404), e sob `(dashboard)` o shell cobre tudo com o spinner de sessão antes de a página renderizar. A rota de teste foi removida e o build refeito limpo.
+
+Build limpo, typecheck limpo, lint 0 erros, 549 testes passando (as 5 falhas de fuso/ICU são pré-existentes).
+
+**Em aberto:** se a tela voltar a aparecer, agora ela mostra um código de erro. Me passe esse código que eu localizo a origem — era exatamente o que faltava para diagnosticar.
+
+Arquivos: `src/app/global-error.tsx` (novo), `src/app/error.tsx` (novo),
+`src/app/(dashboard)/error.tsx` (novo), `src/app/not-found.tsx` (novo), `src/middleware.ts`
+
 ## [2026-08-05] Sino de notificações no topo, com alertas de atividades
 
 > **Requer migration.** `supabase/migrations/042_activity_notifications.sql`.
