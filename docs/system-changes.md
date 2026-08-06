@@ -6,6 +6,47 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-06] Tela de payload cru: era cache de CDN, não erro de código
+
+> Retoma a entrada de 2026-08-06 "Erro no app virava tela de payload cru", que
+> tratou o **sintoma** (adicionou error boundaries) sem achar a causa. Esta é a causa.
+
+**Antes:** ao entrar no CRM, às vezes a tela mostrava o payload cru do React Server Components como texto puro — `0:{"tree":...,"buildId":"..."}` — sem nenhum HTML. Relatado desta vez por um usuário recém-convidado, logo após aceitar o convite.
+
+**Investigação.** A entrada anterior procurou o `throw` e não achou. **Não havia `throw` nenhum** — e é por isso que os error boundaries nunca capturaram nada: o aplicativo não chegou a rodar.
+
+A causa está em `next.config.ts`. A regra de cache aplicava
+
+    public, max-age=0, s-maxage=300, stale-while-revalidate=86400
+
+a todo caminho que não fosse `/api` nem `/_next/static` — **incluindo `/dashboard`, `/inbox` e todas as telas autenticadas**. O comentário que estava lá afirmava que essas rotas eram "server-rendered per request" e portanto seguras. Não são: são componentes de cliente, então o Next pré-renderiza o esqueleto como **estático** (`○` na saída do build, verificado).
+
+E aí entra o detalhe que fecha o caso: **uma URL, duas respostas.** Uma navegação do navegador em `/dashboard` recebe HTML; as buscas do próprio roteador do Next (prefetch, navegação client-side) recebem o payload RSC **do mesmo caminho**, distinguidas só pelo cabeçalho de requisição `RSC`. O Next avisa disso com `Vary: RSC, Next-Router-State-Tree, …` — mas um CDN que ignora `Vary` (o da Hostinger, o mesmo que causou o incidente de chunks obsoletos documentado no próprio comentário) indexa as duas pelo caminho apenas. A que chegar primeiro no cache é servida para todo mundo por 5 minutos — e por até 24 h a mais enquanto revalida.
+
+Quando o payload RSC ganha essa corrida, quem abre `/dashboard` recebe **o payload como documento**. Explica tudo: intermitente, imune a janela anônima (o cache é do servidor), e atinge quem acabou de ser convidado — essa pessoa chega via `window.location.href = '/dashboard'` logo depois de outra sessão ter feito prefetch da mesma rota.
+
+**Depois:**
+- Rotas autenticadas, mais `/join/<token>`, `/login` e `/signup`, respondem `private, no-store, must-revalidate`. A regra pública passou a **excluir** esses caminhos em vez de só sobrepô-los — o Next mescla os cabeçalhos de todas as regras que casam, e dois `Cache-Control` conflitantes deixariam a escolha para o CDN.
+- A lista de caminhos vem de `PROTECTED_PREFIXES` (`src/lib/auth/session-gate.ts`), importada pelo `next.config.ts`. Uma seção nova adicionada lá não volta a ser cacheada por esquecimento — que é exatamente o tipo de deriva que criou o buraco de rotas desprotegidas na entrada de 2026-08-06.
+- O `proxy.ts` carimba o mesmo cabeçalho em tudo que passa por `needsSession`, inclusive nos redirecionamentos. Um redirect cacheado seria sua própria pane: prenderia todo visitante no `/login` até a entrada expirar.
+
+**Verificação — servindo por HTTP, não só compilando.** Subi o build de produção e conferi os cabeçalhos:
+
+| Rota | Cache-Control |
+|---|---|
+| `/dashboard`, `/inbox`, `/settings`, `/activities` | `private, no-store, must-revalidate` |
+| `/join/abc`, `/login`, `/signup` | `private, no-store, must-revalidate` |
+| `/dashboard` **com cabeçalho `RSC: 1`** | `private, no-store, must-revalidate` |
+| `/` (pública) | `public, s-maxage=300, …` — inalterada |
+
+A última linha é a prova do "antes": é exatamente a regra que se aplicava ao `/dashboard`. Três testes novos no `proxy.test.ts` travam o comportamento.
+
+**Resolvido:** relato do usuário com print da tela crua em `vbase.com.br/dashboard`, após um convidado aceitar o convite e entrar.
+
+**Em aberto:** não tenho acesso ao painel da Hostinger para confirmar que o CDN de fato ignora `Vary` — a hipótese é sustentada pelo incidente anterior de chunks obsoletos, documentado no mesmo arquivo, que só se explica por cache de borda ignorando variação. De todo modo, `no-store` fecha a porta independentemente de qual CDN está na frente. **Se a tela voltar a aparecer depois deste deploy, me avise imediatamente** — significaria que a causa é outra e o diagnóstico precisa recomeçar.
+
+Arquivos: `next.config.ts`, `src/proxy.ts`, `src/proxy.test.ts`
+
 ## [2026-08-06] Operadores, Etapa 1 — um número por pessoa e caixa separada
 
 > **Requer migration.** `supabase/migrations/044_operators_multi_number.sql`.
