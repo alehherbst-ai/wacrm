@@ -6,6 +6,88 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-06] Convite recusado porque o convidado abriu a tela de Funis
+
+> **Requer migration.** `supabase/migrations/043_invite_ignores_empty_pipeline.sql`.
+> Ela substitui `redeem_invitation()` via `CREATE OR REPLACE` — mesma assinatura,
+> mesmos SQLSTATEs. Enquanto não for aplicada, o convite continua sendo recusado
+> no cenário abaixo.
+
+**Antes:** `redeem_invitation()` (migration 019) recusava a entrada quando a conta pessoal do convidado tivesse qualquer linha de domínio — e `pipelines` estava nessa lista. Só que funil é a única coisa do app que aparece **sem ninguém criar**: a tela de Funis semeia um "Sales Pipeline" padrão na primeira visita (`seedDefaultPipeline`). Então a sequência
+
+    cadastra → entra → clica em "Funis" → aceita o convite
+
+terminava em *"Your account already contains data; sign up with a different email to join this one"*. O convidado era obrigado a criar um segundo e-mail por ter aberto um menu. Nada na conta dele merecia proteção: o funil estava vazio e ele nunca tinha tocado nele.
+
+**Depois:** um funil conta como dado quando **tem negócios**, não quando apenas existe. A sonda de `pipelines` virou uma sonda de `deals` com `JOIN pipelines` — o join é o que garante que um negócio conte mesmo se o `deals.account_id` (nullable desde a 017) não tiver sido preenchido. Todos os outros itens da lista continuam iguais: contatos, conversas, disparos, automações, fluxos, modelos, tags, campos personalizados, notas e conexão de WhatsApp seguem bloqueando a entrada.
+
+O funil vazio some junto com a conta pessoal no fim da função — `pipelines.account_id` é `ON DELETE CASCADE` (017) e `pipeline_stages.pipeline_id` cascateia do funil (001). Não precisou de limpeza explícita.
+
+**Trade-off, dito abertamente:** quem montar um funil à mão, com etapas customizadas e nenhum negócio, e depois entrar em outra conta, perde esse funil. Ele estava abandonando a conta onde o funil vivia de qualquer forma, e não havia trabalho ali dentro. É um preço muito menor do que bloquear todo convidado que clicou no menu errado antes.
+
+**Resolvido:** pedido do usuário depois de eu mapear a estrutura do projeto e encontrar essa armadilha. Ela atingia qualquer pessoa convidada que desse uma olhada no CRM antes de aceitar — ou seja, o comportamento mais natural do mundo.
+
+**Não verificado localmente:** não há Postgres, `psql`, CLI do Supabase nem Docker nesta máquina, então o SQL não foi executado. A função foi copiada da 019 com uma única ramificação trocada. Aplicar pelo editor SQL do Supabase: `CREATE OR REPLACE` é atômico, então ou passa ou falha sem deixar estado quebrado.
+
+Arquivos: `supabase/migrations/043_invite_ignores_empty_pipeline.sql` (novo)
+
+## [2026-08-06] Login que só recarregava a tela e limpava os campos
+
+**Antes:** às vezes, com e-mail e senha corretos, o login não entrava — a página recarregava, os campos limpavam e nenhuma mensagem aparecia. Intermitente, sem padrão aparente.
+
+**Causa.** O middleware chamava `supabase.auth.getUser()`, que é uma ida à rede até o servidor de Auth, e lia as duas respostas possíveis como se fossem a mesma: *"esse token não vale"* e *"não consegui perguntar"* chegam ambas como `user: null`. Uma queda de rede, um 429 do limitador de requisições ou um 5xx do Supabase na primeira navegação depois do login mandava o usuário de volta para `/login`. A sessão estava perfeita.
+
+Agravante: o `getUser()` rodava em **toda** requisição que casasse o matcher — payloads RSC, prefetches, `/api/v1/*` (que autentica por chave de API) e até os webhooks do provedor. Cada uma consumia cota de rate limit do Auth. O excesso de chamadas estava *fabricando* os 429 que causavam as falhas.
+
+**Depois:**
+- Só um veredito de verdade redireciona: 4xx do servidor de Auth, ou ausência de cookie de sessão. Resposta inconclusiva (rede, 429, 5xx) **com cookie presente** deixa a requisição passar — as páginas são protegidas por RLS e o shell do dashboard reverifica no cliente, então uma sessão realmente morta ainda chega ao login, por evidência.
+- A verificação foi reduzida às rotas que precisam dela. Webhooks e API pública não tocam mais no servidor de Auth.
+- `getUser()` embrulhado em try/catch — ele relança erros que não são de auth, e isso derrubava a página com 500.
+- Quem é desviado leva `?redirectedFrom=` na URL: a tela explica ("sua sessão expirou ou não pôde ser verificada") e o login devolve a pessoa à página onde ela estava, aceitando só caminhos do próprio site.
+- O login confere se a sessão foi mesmo gravada antes de navegar (cookies bloqueados viram mensagem, não loop) e trata falha de rede — antes o botão ficava em "Entrando..." para sempre.
+- `middleware.ts` → `proxy.ts`, seguindo a depreciação do Next 16 que o build já avisava. Rename de arquivo e de função, conforme o codemod oficial.
+
+**Resolvido:** relato do usuário de que o CRM "não entra, só recarrega e limpa os campos". 20 testes novos cobrem os três cenários que causavam o bug (rede fora, 429, e o 401 legítimo que *deve* redirecionar) e o open-redirect no `redirectedFrom`.
+
+Arquivos: `src/middleware.ts` → `src/proxy.ts`, `src/proxy.test.ts`,
+`src/lib/auth/session-gate.ts` (novo), `src/lib/auth/session-gate.test.ts` (novo),
+`src/app/(auth)/login/page.tsx`, `messages/*.json`
+
+## [2026-08-06] Metade do histórico sumia quando a resposta era pelo celular
+
+**Antes:** conversa continuada no aplicativo do WhatsApp Business aparecia no CRM só com a parte do cliente. As respostas digitadas no celular não entravam no histórico.
+
+**Causa.** O webhook descartava toda mensagem marcada como `fromMe`, com a intenção de evitar o eco dos envios do próprio CRM. Só que o provedor marca duas coisas diferentes com essa flag: `wasSentByApi` é o nosso envio voltando (esse já está gravado), e um `fromMe` puro é alguém digitando em outro aparelho do mesmo número. A segunda era jogada fora.
+
+**Depois:** a regra virou `classifyDelivery` (pura, testada) e mensagens de outro aparelho são gravadas como `sender_type='agent'` — idênticas às enviadas pelo composer. Junto:
+- fluxos, automações e resposta automática por IA **não** disparam nesse caminho — existem para responder ao cliente, e disparar ali faria o CRM responder a si mesmo;
+- o nome do remetente é ignorado nessas mensagens: uma mensagem nossa carrega o *nosso* push name e renomearia o contato;
+- checagem por id do provedor antes de inserir, cobrindo reentrega do webhook e conexões antigas que ecoam os envios da API;
+- contador de não lidas zera em vez de subir (responder pelo celular é ter lido a conversa);
+- flow ativo é pausado, mesmo sinal de "humano assumiu" que o envio pelo CRM já dava;
+- reações feitas por nós no celular também entram, como `actor_type='agent'`.
+
+Na mesma leva, dois pedidos do usuário na Caixa de Entrada: o diálogo de **Nova conversa** agora abre nos contatos salvos (busca por nome, empresa ou número, com dígitos normalizados), com a digitação manual atrás de uma aba; e a **busca de conversas** sugere contatos a partir da primeira letra em vez da segunda — antes a primeira tecla mostrava "nenhuma conversa encontrada" e mais nada, o que parecia um CRM vazio.
+
+**Resolvido:** relato do usuário com print do CRM ao lado do WhatsApp Business mostrando as mensagens ausentes. Vale só daqui pra frente — o que foi descartado antes do deploy não ficou gravado em lugar nenhum.
+
+Arquivos: `src/lib/whatsapp/delivery-direction.ts` (novo),
+`src/lib/whatsapp/delivery-direction.test.ts` (novo),
+`src/lib/whatsapp/inbound-pipeline.ts`,
+`src/app/api/whatsapp/uazapi/webhook/[connectionId]/[secret]/route.ts`,
+`src/components/inbox/new-conversation-dialog.tsx`,
+`src/components/inbox/conversation-list.tsx`, `messages/*.json`
+
+## [2026-08-06] Criar atividade direto da Caixa de Entrada
+
+**Antes:** não havia como agendar um follow-up sem sair da conversa. O atendente precisava abrir Atividades e procurar o contato de novo numa lista.
+
+**Depois:** o painel de contato ganhou uma seção **Atividades**, entre Negócios e Notas, reaproveitando o `ContactActivitiesPanel` que a gaveta de contatos já usa — criar, concluir e excluir se comportam igual nos dois lugares. O painel recebe o contato da conversa aberta, então o `contact_id` é gravado no insert e a atividade aparece no quadro, no calendário e na aba do contato. Visível só para quem tem permissão de escrita, como tags e negócios.
+
+**Resolvido:** pedido do usuário. Continua indisponível no celular, onde o painel de contato inteiro é oculto (`hidden lg:block`) — vale para tags, negócios e notas também.
+
+Arquivos: `src/components/inbox/contact-sidebar.tsx`, `messages/*.json`
+
 ## [2026-08-06] Erro no app virava tela de payload cru; rotas novas sem proteção
 
 **Antes:** ao entrar com uma conta de agente recém-criada, a tela mostrou o payload bruto do React Server Components como texto puro (`:HL[...]`, `0:{"tree":...}`) — ilegível, sem mensagem e sem saída além da barra de endereço.
