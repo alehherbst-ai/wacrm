@@ -226,7 +226,15 @@
       "selectConversation": "대화를 선택하세요",
       "selectConversationHint": "왼쪽에서 대화를 선택해 메시지를 시작하세요",
       "today": "오늘",
-      "yesterday": "어제"
+      "yesterday": "어제",
+      "transferConversation": "대화 이관",
+      "inheritedFrom": "{operator} 님에게서 이어받은 기록",
+      "inheritedHistory": "이어받은 기록",
+      "inheritedEmpty": "이 구간에는 메시지가 없습니다",
+      "chainDivider": "여기부터가 내 응대입니다",
+      "observingHandedOver": "이 대화를 이관했습니다. 지켜보는 중이며, 고객이 이 번호로 다시 쓰면 다시 담당하게 됩니다.",
+      "observingOther": "이 대화는 {operator} 님의 번호에 속합니다. 지켜보는 중입니다.",
+      "observingUnknown": "이 대화는 다른 번호에 속합니다. 지켜보는 중입니다."
     },
     "composer": {
       "draftHint": "✨를 눌러 AI로 답장 초안을 작성하세요 — 보내기 전에 수정할 수 있습니다",
@@ -314,6 +322,22 @@
       "resumed": "AI가 재개되었습니다.",
       "updateError": "AI 어시스턴트를 업데이트하지 못했습니다.",
       "networkError": "서버에 연결할 수 없습니다."
+    },
+    "transfer": {
+      "title": "대화 이관",
+      "description": "대화는 인수하는 담당자의 번호에서 이어지며, 이전 기록 전체가 구분선 위에 표시됩니다.",
+      "operatorLabel": "이관 대상",
+      "noOperators": "WhatsApp 번호가 연결된 다른 사람이 없습니다. 설정에서 해당 번호를 먼저 연결하세요.",
+      "unnamedOperator": "이름 없는 담당자",
+      "sendOpening": "소개 메시지 보내기",
+      "sendOpeningHint": "고객에게는 이관 사실이 알려지지 않으며 예전 번호를 그대로 가지고 있습니다. 이 메시지가 없으면 새 담당자와의 대화 자체가 없습니다.",
+      "openingSuggestion": "안녕하세요! {operator}입니다. 지금부터 제가 응대를 이어가겠습니다.",
+      "cancel": "취소",
+      "confirm": "이관",
+      "transferring": "이관 중...",
+      "done": "{operator} 님에게 대화를 이관했습니다",
+      "openingFailed": "대화는 이관되었지만 소개 메시지가 전송되지 않았습니다. 새 대화에서 직접 보내세요.",
+      "error": "대화를 이관할 수 없습니다."
     }
   },
   "Contacts": {
@@ -1157,7 +1181,12 @@
       "removeDialogDesc": "<bold>{name}</bold>을(를) 이 계정에서 제거하시겠습니까? 이 계정에서 로그아웃되며 다음 로그인 시 새로운 개인 계정이 발급됩니다. 로그인 정보 자체는 삭제되지 않습니다.",
       "cancel": "취소",
       "removing": "제거 중...",
-      "removeBtn": "멤버 제거"
+      "removeBtn": "멤버 제거",
+      "scopeLabel": "이 사용자가 받은편지함에서 볼 수 있는 대화",
+      "scopeAll": "모든 대화",
+      "scopeOwn": "본인 번호만",
+      "scopeUpdatedToast": "{name} 님의 표시 범위: {scope}",
+      "scopeError": "표시 범위를 변경할 수 없습니다."
     },
     "invite": {
       "inviteCreated": "초대가 생성되었습니다",
@@ -1446,7 +1475,9 @@
       "limitationsTitle": "제한 사항",
       "limitationsDesc": "이 연결은 승인된 메시지 템플릿이나 인터랙티브 버튼/목록 메시지를 지원하지 않습니다 — 해당 기능은 Meta 연결이 필요합니다.",
       "connectError": "연결을 시작할 수 없습니다. 다시 시도하세요.",
-      "statusError": "연결 상태를 확인할 수 없습니다."
+      "statusError": "연결 상태를 확인할 수 없습니다.",
+      "mineTitle": "내 WhatsApp 번호",
+      "mineDescription": "휴대폰으로 QR 코드를 스캔해 본인 번호를 연결하세요. 이 번호로 오는 대화는 내 받은편지함에만 표시되고, 내 답장도 이 번호로 나갑니다."
     }
   }
 }

@@ -193,12 +193,11 @@ function InboxPageInner() {
 
       if (!user) return;
 
-      // whatsapp_config is one-row-per-account post-multi-user, so
-      // the previous `.eq('user_id', user.id)` would miss the row
-      // for any teammate who didn't personally save the config —
-      // the "WhatsApp not connected" banner would show in the
-      // shared inbox even though the admin had it configured.
-      // Resolve account_id via the profile and query by that.
+      // Query by account, never by `user_id`: that column records who
+      // SAVED the connection, so filtering on it hid the banner's true
+      // state from every teammate who didn't personally set it up.
+      // (Whose number a connection IS lives in `operator_user_id`
+      // since migration 044 — a different question, handled below.)
       const { data: profile } = await supabase
         .from("profiles")
         .select("account_id")
@@ -210,13 +209,26 @@ function InboxPageInner() {
         return;
       }
 
+      // Every connection on the account, not one row: since migration
+      // 044 there may be one per operator, and `.maybeSingle()` — what
+      // stood here — errors outright on more than one.
       const { data } = await supabase
         .from("whatsapp_config")
-        .select("status")
-        .eq("account_id", accountId)
-        .maybeSingle();
+        .select("status, operator_user_id")
+        .eq("account_id", accountId);
 
-      setWhatsappConnected(data?.status === "connected");
+      const rows = data ?? [];
+      // An operator's own line is what decides the banner for them: if
+      // their number is down, "WhatsApp connected" is a lie no matter
+      // how healthy the house number is. Whoever has no line of their
+      // own falls back to "is anything receiving at all", which is the
+      // question a gestor is actually asking.
+      const mine = rows.find((row) => row.operator_user_id === user.id);
+      setWhatsappConnected(
+        mine
+          ? mine.status === "connected"
+          : rows.some((row) => row.status === "connected"),
+      );
     };
 
     checkConnection();
@@ -625,6 +637,44 @@ function InboxPageInner() {
     [router, t],
   );
 
+  /**
+   * A conversation was just handed to another operator.
+   *
+   * The destination thread lives on THEIR number, so for an operator
+   * scoped to their own inbox it isn't theirs to open — RLS won't even
+   * return it. Rather than guess, try to open it and fall back to
+   * simply refreshing: a gestor (or anyone who can see that number)
+   * follows the conversation to its new home, and everyone else stays
+   * put and watches their side flip to the observing state.
+   */
+  const handleTransferred = useCallback(
+    async (conversationId: string) => {
+      setResyncToken((n) => n + 1);
+
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("conversations")
+        .select(CONVERSATION_SELECT)
+        .eq("id", conversationId)
+        .maybeSingle();
+
+      if (!data) return;
+
+      const conv = normalizeConversation(data);
+      setConversations((prev) =>
+        prev.some((c) => c.id === conv.id)
+          ? prev.map((c) => (c.id === conv.id ? { ...c, ...conv } : c))
+          : [conv, ...prev],
+      );
+      setActiveConversation(conv);
+      setActiveContact(conv.contact ?? null);
+      setMessages([]);
+      autoSelectedForDeepLinkRef.current = conv.id;
+      router.replace(`/inbox?c=${conv.id}`, { scroll: false });
+    },
+    [router],
+  );
+
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {
     setMessages(loaded);
   }, []);
@@ -748,6 +798,7 @@ function InboxPageInner() {
             onRefresh={handleManualRefresh}
             contactPanelOpen={contactPanelOpen}
             onToggleContactPanel={handleToggleContactPanel}
+            onTransferred={handleTransferred}
           />
         </div>
 

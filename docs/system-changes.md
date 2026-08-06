@@ -6,6 +6,200 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-06] Operadores — migrations aplicadas em produção e dois defeitos corrigidos
+
+> **Requer migration.** `supabase/migrations/046_operators_fix_unique_and_chain.sql`,
+> aplicada **depois** da 045. O cabeçalho traz o SQL de reversão.
+> As 044, 045 e 046 já estão aplicadas no projeto de produção
+> (`qinerutevsfzyhdmqpbm`); falta apenas o deploy do código.
+
+**Antes:** as etapas 1 e 2 tinham sido escritas e revisadas, mas nunca
+executadas contra um banco — a máquina de desenvolvimento não tinha
+Postgres, CLI do Supabase nem Docker. Ao conferir o estado real do banco,
+descobriu-se que a **044 já estava aplicada** em produção (todos os
+índices, policies, funções e o gatilho conferiam com o arquivo), ao
+contrário do que se supunha. Rodar as duas contra dados reais expôs dois
+defeitos que não davam erro nenhum ao aplicar — os dois só apareceriam no
+dia em que alguém tentasse *usar* o modelo de operadores:
+
+1. **A constraint que a 044 não derrubou.** A 044 derruba
+   `whatsapp_config_account_id_key`, a `UNIQUE(account_id)` criada pela
+   migration 017. Só que a **migration 037 já tinha trocado essa
+   constraint** por `whatsapp_config_account_id_provider_key`, uma
+   `UNIQUE(account_id, provider)`. O `DROP ... IF EXISTS` da 044 não achou
+   nada para derrubar e passou calado, e a constraint que de fato bloqueia
+   o modelo continuou de pé. Resultado: conectar um **segundo número
+   uazapi** na mesma conta falhava com 23505 — ou seja, o propósito
+   inteiro da Etapa 1 era impossível. Como a conta só tinha um número
+   conectado, nada disso aparecia na interface, e a 044 parecia aplicada e
+   correta.
+2. **`transfer_chain_id` sem default.** A 045 afirma que "toda conversa é
+   uma cadeia de um elo só", mas garante isso com um `UPDATE` único,
+   executado no instante em que a migration roda. A coluna ficou sem
+   DEFAULT e sem gatilho, então **toda conversa criada depois nascia com a
+   cadeia NULL**, e o invariante se quebrava sozinho já na primeira
+   mensagem nova. Com a cadeia NULL, o bloco de histórico herdado desiste
+   (`message-thread.tsx` verifica `!chainId`) e o ramo de cadeia de
+   `can_read_conversation` é pulado.
+
+**Depois:**
+- A `UNIQUE(account_id, provider)` foi derrubada. A unicidade continua
+  garantida — e de forma mais estrita — pelos dois índices parciais da
+  044: um número por operador, no máximo um número da casa por conta.
+- Um gatilho `BEFORE INSERT` em `conversations` preenche
+  `transfer_chain_id` com o próprio `id` quando ele vem vazio. É gatilho e
+  não DEFAULT porque uma expressão de DEFAULT não enxerga as outras
+  colunas da linha — não há como escrever "o meu próprio id" ali. O
+  `COALESCE` preserva a cadeia que `transfer_conversation` já grava na
+  conversa de destino. Por ser no banco, vale também para o webhook de
+  entrada, que escreve com a service role.
+- **40 testes de comportamento** rodados contra o schema real, dentro de
+  transações revertidas ao final (nenhum resíduo em produção): escopo de
+  leitura `own`/`all`, a equivalência de `all` com `is_account_member`,
+  bloqueio de auto-promoção de `inbox_scope` e `account_role` (42501), os
+  três índices únicos incluindo o caso do `COALESCE` com número NULL,
+  `transfer_conversation` ponta a ponta com as quatro recusas (grupo,
+  destinatário sem número, para si mesmo, observador), a devolução
+  reaproveitando a conversa de origem, o pause do fluxo ativo, e a
+  assimetria central: quem recebeu **lê** as mensagens da origem e **não
+  escreve** nelas (0 linhas no UPDATE, 42501 no INSERT).
+
+**Resolvido:** o modelo de operadores agora funciona de fato. Sem a
+correção 1, o primeiro operador a tentar parear o próprio celular
+receberia um erro de chave duplicada e a Etapa 1 nunca sairia do papel —
+era um defeito invisível, que só se revelaria em produção, no pior
+momento. Sem a correção 2, a herança de histórico degradaria em silêncio
+para toda conversa criada depois da migration.
+
+**Nota de segurança (verificada, não é vulnerabilidade):** o
+`REVOKE ALL ... FROM PUBLIC` das 044/045 não tira o `anon` das RPCs — o
+Supabase re-concede EXECUTE ao `anon` por default privileges. Testado na
+prática: o `anon` recebe 42501 em `transfer_conversation` e em
+`set_member_inbox_scope` (as duas exigem `auth.uid()` não nulo) e lê zero
+linhas de `conversations` e `messages`. O alerta do advisor do Supabase
+sobre isso vale para 22 funções `SECURITY DEFINER` do projeto inteiro, não
+é novidade destas migrations.
+
+Arquivos: `supabase/migrations/046_operators_fix_unique_and_chain.sql` (novo)
+
+## [2026-08-06] Operadores, Etapa 2 — transferir conversa com histórico herdado
+
+> **Requer migration.** `supabase/migrations/045_conversation_transfer.sql`,
+> aplicada **depois** da 044. O cabeçalho traz o SQL de reversão.
+> **Branch `feat/operadores-multi-numero`.**
+
+**Antes:** com a Etapa 1, cada operador tinha o próprio número e a própria caixa — mas não havia como passar uma conversa adiante. Quem precisasse repassar um atendimento só podia contar o caso por fora; o outro operador começava do zero, sem nada do que já tinha sido dito.
+
+**Depois:**
+- **Transferir não copia nada.** A conversa de destino (no número de quem recebe) guarda uma referência à de origem, e as duas passam a compartilhar um `transfer_chain_id`. A tela desenha o histórico anterior acima de uma divisória, somente leitura, e o atendimento novo abaixo.
+- **Cadeia inteira.** Se o Bruno passar para o Carlos, o Carlos herda desde a Ana, com uma divisória por passagem.
+- **Leitura alcança a cadeia; escrita não.** `can_read_conversation` aceita "algum elo desta cadeia é do meu número"; a escrita continua em `can_access_conversation`, sem cadeia. É isso que implementa "um dono ativo por vez, os demais observam" — e é o banco que impõe, não a tela.
+- **Reabertura automática.** O cliente continua com o número antigo e pode escrever nele. Quando escreve, o pipeline de entrada limpa `handed_over_at` e a conversa volta a ser da Ana; o Bruno segue vendo tudo, porque está na mesma cadeia.
+- **Mensagem de abertura sugerida, não obrigatória** — vem pronta e marcada. Sem ela o cliente não fica sabendo de nada e continua escrevendo para o número antigo; a caixinha explica isso na própria tela.
+- **Grupos não são transferíveis** e o botão não aparece neles.
+
+**Decisões que vale registrar:**
+1. **Referência em vez de cópia** foi escolha de projeto, discutida antes de codar. Copiar quebraria a resposta a mensagens antigas (a cópia não carrega o id que o WhatsApp deu à mensagem), dobraria contagens em não lidas e relatórios, e envelheceria na hora que o cliente escrevesse no número antigo. O ganho colateral: o Bruno ver as mensagens novas da Ana sai de graça — elas estão na cadeia.
+2. **`transfer_chain_id` em vez de recursão.** A pergunta "esta conversa é parente de alguma minha?" roda em toda linha avaliada pela RLS. Uma coluna indexável responde em uma comparação; um CTE recursivo por linha não é algo que uma policy possa se dar ao luxo de fazer.
+3. **A mensagem de abertura usa o cliente de serviço**, não o do usuário. A conversa de destino é do número do outro operador, e escrever ali é justamente o que a RLS recusa. A autorização já tinha sido estabelecida pelo RPC uma instrução antes — a mensagem é o rabo daquela operação aprovada, não um ato novo.
+4. **Falha na mensagem de abertura não desfaz a transferência.** Uma transferência pela metade seria pior que uma sem saudação: a saudação se redigita, uma transferência rasgada não se enxerga.
+5. **O estado "entregue" é regra de fluxo, não fronteira de segurança**, e por isso vive na tela e não na RLS. A Ana responder a própria conversa transferida não é violação — é bagunça. A separação está documentada no código.
+
+**Verificação:** typecheck limpo, build limpo, lint 0 erros, 146 testes nas áreas tocadas. 15 testes novos em `transfer-chain.test.ts` cobrem a ordenação por ponteiros (inclusive com timestamps idênticos), a fusão de cadeias, ciclos de ponteiro, e as três formas de ser observador.
+
+**Não verificado:** o SQL não foi executado — não há Postgres nesta máquina.
+
+Arquivos: `supabase/migrations/045_conversation_transfer.sql` (novo),
+`src/lib/inbox/transfer-chain.ts` (novo), `src/lib/inbox/transfer-chain.test.ts` (novo),
+`src/components/inbox/transfer-dialog.tsx` (novo),
+`src/app/api/whatsapp/conversations/transfer/route.ts` (novo),
+`src/components/inbox/message-thread.tsx`, `src/app/(dashboard)/inbox/page.tsx`,
+`src/lib/whatsapp/inbound-pipeline.ts`, `src/hooks/use-auth.tsx`,
+`src/types/index.ts`, `messages/*.json`
+
+## [2026-08-06] Tela de payload cru: era cache de CDN, não erro de código
+
+> Retoma a entrada de 2026-08-06 "Erro no app virava tela de payload cru", que
+> tratou o **sintoma** (adicionou error boundaries) sem achar a causa. Esta é a causa.
+
+**Antes:** ao entrar no CRM, às vezes a tela mostrava o payload cru do React Server Components como texto puro — `0:{"tree":...,"buildId":"..."}` — sem nenhum HTML. Relatado desta vez por um usuário recém-convidado, logo após aceitar o convite.
+
+**Investigação.** A entrada anterior procurou o `throw` e não achou. **Não havia `throw` nenhum** — e é por isso que os error boundaries nunca capturaram nada: o aplicativo não chegou a rodar.
+
+A causa está em `next.config.ts`. A regra de cache aplicava
+
+    public, max-age=0, s-maxage=300, stale-while-revalidate=86400
+
+a todo caminho que não fosse `/api` nem `/_next/static` — **incluindo `/dashboard`, `/inbox` e todas as telas autenticadas**. O comentário que estava lá afirmava que essas rotas eram "server-rendered per request" e portanto seguras. Não são: são componentes de cliente, então o Next pré-renderiza o esqueleto como **estático** (`○` na saída do build, verificado).
+
+E aí entra o detalhe que fecha o caso: **uma URL, duas respostas.** Uma navegação do navegador em `/dashboard` recebe HTML; as buscas do próprio roteador do Next (prefetch, navegação client-side) recebem o payload RSC **do mesmo caminho**, distinguidas só pelo cabeçalho de requisição `RSC`. O Next avisa disso com `Vary: RSC, Next-Router-State-Tree, …` — mas um CDN que ignora `Vary` (o da Hostinger, o mesmo que causou o incidente de chunks obsoletos documentado no próprio comentário) indexa as duas pelo caminho apenas. A que chegar primeiro no cache é servida para todo mundo por 5 minutos — e por até 24 h a mais enquanto revalida.
+
+Quando o payload RSC ganha essa corrida, quem abre `/dashboard` recebe **o payload como documento**. Explica tudo: intermitente, imune a janela anônima (o cache é do servidor), e atinge quem acabou de ser convidado — essa pessoa chega via `window.location.href = '/dashboard'` logo depois de outra sessão ter feito prefetch da mesma rota.
+
+**Depois:**
+- Rotas autenticadas, mais `/join/<token>`, `/login` e `/signup`, respondem `private, no-store, must-revalidate`. A regra pública passou a **excluir** esses caminhos em vez de só sobrepô-los — o Next mescla os cabeçalhos de todas as regras que casam, e dois `Cache-Control` conflitantes deixariam a escolha para o CDN.
+- A lista de caminhos vem de `PROTECTED_PREFIXES` (`src/lib/auth/session-gate.ts`), importada pelo `next.config.ts`. Uma seção nova adicionada lá não volta a ser cacheada por esquecimento — que é exatamente o tipo de deriva que criou o buraco de rotas desprotegidas na entrada de 2026-08-06.
+- O `proxy.ts` carimba o mesmo cabeçalho em tudo que passa por `needsSession`, inclusive nos redirecionamentos. Um redirect cacheado seria sua própria pane: prenderia todo visitante no `/login` até a entrada expirar.
+
+**Verificação — servindo por HTTP, não só compilando.** Subi o build de produção e conferi os cabeçalhos:
+
+| Rota | Cache-Control |
+|---|---|
+| `/dashboard`, `/inbox`, `/settings`, `/activities` | `private, no-store, must-revalidate` |
+| `/join/abc`, `/login`, `/signup` | `private, no-store, must-revalidate` |
+| `/dashboard` **com cabeçalho `RSC: 1`** | `private, no-store, must-revalidate` |
+| `/` (pública) | `public, s-maxage=300, …` — inalterada |
+
+A última linha é a prova do "antes": é exatamente a regra que se aplicava ao `/dashboard`. Três testes novos no `proxy.test.ts` travam o comportamento.
+
+**Resolvido:** relato do usuário com print da tela crua em `vbase.com.br/dashboard`, após um convidado aceitar o convite e entrar.
+
+**Em aberto:** não tenho acesso ao painel da Hostinger para confirmar que o CDN de fato ignora `Vary` — a hipótese é sustentada pelo incidente anterior de chunks obsoletos, documentado no mesmo arquivo, que só se explica por cache de borda ignorando variação. De todo modo, `no-store` fecha a porta independentemente de qual CDN está na frente. **Se a tela voltar a aparecer depois deste deploy, me avise imediatamente** — significaria que a causa é outra e o diagnóstico precisa recomeçar.
+
+Arquivos: `next.config.ts`, `src/proxy.ts`, `src/proxy.test.ts`
+
+## [2026-08-06] Operadores, Etapa 1 — um número por pessoa e caixa separada
+
+> **Requer migration.** `supabase/migrations/044_operators_multi_number.sql`.
+> O cabeçalho dela traz o SQL de reversão completo e diz em que ponto a
+> reversão deixa de ser possível (quando o segundo número for conectado).
+> **Branch `feat/operadores-multi-numero`, não está na `main`.**
+> Ponto de retorno: tag `marco/numero-unico-caixa-compartilhada`.
+
+**Antes:** uma conta tinha exatamente um número de WhatsApp (`whatsapp_config` com `UNIQUE(account_id)`) e todos os membros dividiam uma caixa de entrada. A conversa era identificada por (conta, contato), então o mesmo cliente sempre caía na mesma thread, viesse de qual número viesse — e como só havia um, isso nunca apareceu.
+
+**Depois:**
+- **Um número por operador.** `whatsapp_config.operator_user_id` diz de quem é a linha; NULL é o "número da casa", que é o que a conexão existente vira ao aplicar a migration. Dois índices parciais garantem um número por operador e no máximo um da casa.
+- **Escopo de caixa.** `profiles.inbox_scope` ('all' | 'own'), ortogonal ao cargo: cargo é o que a pessoa *pode fazer*, escopo é o que ela *pode ver*. Um gerente que atende é admin + own.
+- **A chave da conversa** passou de (conta, contato) para (conta, contato, número), com backfill antes da troca do índice. É o que permite duas conversas com o mesmo cliente.
+- **`can_access_conversation()`** substitui `is_account_member()` nas policies de conversas, mensagens e reações. Com escopo 'all' ela devolve exatamente o que devolvia antes — por isso aplicar a migration não muda nada até alguém ser colocado em 'own'.
+- **O envio pergunta pela conversa, não pela conta.** `resolveConnectionForConversation` substitui `resolveConnection` no composer, nas reações, nos fluxos, nas automações e na IA (que passa pelo motor de fluxos). Uma resposta que saísse pelo número errado chegaria ao cliente como mensagem de um desconhecido, num chat que ele nunca abriu.
+- **Operador conecta o próprio número.** As rotas connect/status/disconnect aceitam `scope: 'account' | 'mine'`; o default continua sendo o número da casa, admin-only, porque criar conexão gasta cota de instância na UAZAPI e ninguém deve descobrir uma segunda instância por um botão ter mudado de sentido.
+- **Tela de Membros** ganhou o seletor de escopo, alimentado pelo RPC `set_member_inbox_scope`.
+
+**Três coisas que quase passaram batido e estão corrigidas:**
+1. **`inbox_scope` é coluna de privilégio.** Sem entrar no gatilho da migration 034, qualquer operador faria `UPDATE profiles SET inbox_scope='all'` direto do navegador e voltaria a ver tudo. A migration estende o gatilho.
+2. **Seis consultas usavam `.maybeSingle()` em `whatsapp_config` filtrando só por conta** — e `.maybeSingle()` *erra* com mais de uma linha. Todas quebrariam no dia do segundo número: connect, status, disconnect, o banner da caixa de entrada, a visão geral de Configurações, o resolvedor de conversa da API pública e o resolvedor de autor de contatos.
+3. **"Limpar caixa"** faz um UPDATE em massa sem filtro de dono, apoiado só na RLS. Com a policy de UPDATE escopada, um operador passa a arquivar apenas as próprias conversas — sem isso ele limparia a caixa dos colegas.
+
+**Bug pré-existente corrigido de passagem:** `uazapi-connect.tsx` pedia o namespace de tradução `Settings.whatsapp.uazapi`, que não existe — as chaves vivem em `Settings.whatsapp`. Todos os rótulos daquele cartão resolviam para mensagem ausente.
+
+**Resolvido:** primeira etapa do modelo de operadores desenhado com o usuário. Ainda **não** inclui transferência de conversa, histórico herdado nem o estado de observador — isso é a Etapa 2.
+
+**Não verificado:** o SQL não foi executado (não há Postgres, CLI do Supabase nem Docker nesta máquina). Typecheck limpo, build limpo, 577 testes passando — as 5 falhas de fuso/ICU seguem pré-existentes.
+
+Arquivos: `supabase/migrations/044_operators_multi_number.sql` (novo),
+`src/lib/whatsapp/uazapi-client.ts`, `src/lib/whatsapp/uazapi-client.test.ts` (novo),
+`src/lib/whatsapp/connection-target.ts` (novo), `src/lib/whatsapp/send-message.ts`,
+`src/lib/whatsapp/resolve-conversation.ts`, `src/lib/flows/whatsapp-send.ts`,
+`src/lib/automations/whatsapp-send.ts`, `src/lib/api/v1/contacts.ts`,
+`src/app/api/whatsapp/uazapi/{connect,status,disconnect}/route.ts`,
+`src/app/api/whatsapp/react/route.ts`, `src/app/api/account/members/route.ts`,
+`src/app/api/account/members/[userId]/route.ts`, `src/app/(dashboard)/inbox/page.tsx`,
+`src/app/(dashboard)/settings/page.tsx`, `src/components/settings/whatsapp-panel.tsx` (novo),
+`src/components/settings/uazapi-connect.tsx`, `src/components/settings/members-tab.tsx`,
+`src/components/settings/settings-overview.tsx`, `src/types/index.ts`, `messages/*.json`
+
 ## [2026-08-06] Convite recusado porque o convidado abriu a tela de Funis
 
 > **Requer migration.** `supabase/migrations/043_invite_ignores_empty_pipeline.sql`.

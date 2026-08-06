@@ -67,6 +67,7 @@ import { RequireRole } from '@/components/auth/require-role';
 import { useAuth } from '@/hooks/use-auth';
 import { usePresence } from '@/hooks/use-presence';
 import type { AccountRole } from '@/lib/auth/roles';
+import type { InboxScope } from '@/types';
 import { presenceLabel, summarize } from '@/lib/presence';
 import {
   PRESENCE_DOT_CLASS,
@@ -82,6 +83,7 @@ interface Member {
   email: string | null;
   avatar_url: string | null;
   role: AccountRole;
+  inbox_scope: InboxScope;
   joined_at: string;
 }
 
@@ -179,6 +181,58 @@ export function MembersTab() {
   useEffect(() => {
     void loadEverything();
   }, [loadEverything]);
+
+  /**
+   * Flip a member between seeing every conversation and seeing only
+   * the ones arriving on their own number.
+   *
+   * Same optimistic-then-revert shape as the role dropdown next to
+   * it: a control that keeps showing the new value after a failed
+   * save leaves the next click operating on a wrong baseline.
+   */
+  async function handleScopeChange(member: Member, nextScope: InboxScope) {
+    if (member.inbox_scope === nextScope) return;
+    const previousScope = member.inbox_scope;
+    setPendingMemberAction(member.user_id);
+    setMembers((prev) =>
+      prev.map((m) =>
+        m.user_id === member.user_id ? { ...m, inbox_scope: nextScope } : m,
+      ),
+    );
+    const revert = () =>
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.user_id === member.user_id
+            ? { ...m, inbox_scope: previousScope }
+            : m,
+        ),
+      );
+    try {
+      const res = await fetch(`/api/account/members/${member.user_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inbox_scope: nextScope }),
+      });
+      if (!res.ok) {
+        revert();
+        const payload = await res.json().catch(() => ({}));
+        toast.error(payload.error || t('scopeError'));
+        return;
+      }
+      toast.success(
+        t('scopeUpdatedToast', {
+          name: member.full_name || t('unnamed'),
+          scope: nextScope === 'own' ? t('scopeOwn') : t('scopeAll'),
+        }),
+      );
+    } catch (err) {
+      revert();
+      console.error('[MembersTab] scope change error:', err);
+      toast.error(t('scopeError'));
+    } finally {
+      setPendingMemberAction(null);
+    }
+  }
 
   async function handleRoleChange(member: Member, nextRole: AccountRole) {
     if (member.role === nextRole) return;
@@ -410,6 +464,38 @@ export function MembersTab() {
                       inline. Items align to the start on mobile so the
                       role dropdown lines up under the avatar. */}
                   <div className="flex items-center gap-2 sm:gap-3">
+                    {/* Inbox scope. Sits beside the role because the two
+                        answer different questions — role is what this
+                        person may DO, scope is which conversations they
+                        may SEE — and a member is described by both.
+                        Hidden on the owner row: the owner answers for
+                        the whole account, and one who can't see their
+                        own conversations is a trap, not a setting. */}
+                    {canManageMembers && !isOwnerRow && (
+                      <Select
+                        value={member.inbox_scope}
+                        onValueChange={(v) =>
+                          v && handleScopeChange(member, v as InboxScope)
+                        }
+                      >
+                        <SelectTrigger
+                          className="w-36 bg-muted border-border text-foreground"
+                          disabled={isBusy}
+                          title={t('scopeLabel')}
+                        >
+                          <SelectValue>
+                            {member.inbox_scope === 'own'
+                              ? t('scopeOwn')
+                              : t('scopeAll')}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t('scopeAll')}</SelectItem>
+                          <SelectItem value="own">{t('scopeOwn')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+
                     {/* Role display / editor. Inline Select is admin+
                         only AND not allowed on the owner row (owner
                         changes go through transfer, which lands later). */}

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import {
-  resolveConnection,
+  resolveConnectionForConversation,
   WhatsAppNotConfiguredError,
 } from '@/lib/whatsapp/uazapi-client';
 import { resolveSendTarget } from '@/lib/whatsapp/phone-utils';
@@ -92,7 +92,14 @@ export async function POST(request: Request) {
 
     let send;
     try {
-      ({ send } = await resolveConnection(supabase, accountId));
+      // A reaction is delivered inside a chat, so it has to go out on
+      // the same number that chat lives on — the account default would
+      // address a conversation the customer never opened there.
+      ({ send } = await resolveConnectionForConversation(
+        supabase,
+        accountId,
+        conversation.id,
+      ));
     } catch (err) {
       if (err instanceof WhatsAppNotConfiguredError) {
         return NextResponse.json({ error: err.message }, { status: 400 });

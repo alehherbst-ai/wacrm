@@ -3,7 +3,7 @@ import {
   engineSendInteractiveButtons,
   engineSendInteractiveList,
 } from '@/lib/flows/whatsapp-send'
-import { resolveConnection } from '@/lib/whatsapp/uazapi-client'
+import { resolveConnectionForConversation } from '@/lib/whatsapp/uazapi-client'
 import {
   resolveSendTarget,
   isRecipientNotAllowedError,
@@ -58,7 +58,14 @@ export async function engineSendText(args: SendTextArgs): Promise<{ whatsapp_mes
   }
   const sanitized = sendTargets[0]
 
-  const { send } = await resolveConnection(db, args.accountId)
+  // The number this conversation lives on, not the account's default.
+  // An automation is configured once for the whole account, but its
+  // reply still has to leave from the number the customer wrote to.
+  const { send } = await resolveConnectionForConversation(
+    db,
+    args.accountId,
+    args.conversationId
+  )
 
   // Phone-variant retry — numbers registered with/without a trunk 0
   // need this to reliably land a message. Groups have a single target.

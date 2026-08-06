@@ -1,11 +1,12 @@
 // ============================================================
 // /api/account/members/[userId]
 //
-//   PATCH  — change a member's role.   Admin+.
-//   DELETE — remove a member.          Admin+.
+//   PATCH  — change a member's role and/or inbox scope.  Admin+.
+//   DELETE — remove a member.                            Admin+.
 //
-// Both delegate to SECURITY DEFINER RPCs from migration 018:
+// Both delegate to SECURITY DEFINER RPCs from migrations 018 and 044:
 //   - set_member_role(p_user_id, p_new_role)
+//   - set_member_inbox_scope(p_user_id, p_scope)
 //   - remove_account_member(p_user_id)
 //
 // The RPCs do the *real* authorisation work — caller must be
@@ -58,8 +59,30 @@ export async function PATCH(
     const { userId } = await params;
 
     const body = (await request.json().catch(() => null)) as
-      | { role?: unknown }
+      | { role?: unknown; inbox_scope?: unknown }
       | null;
+
+    // Inbox scope is a separate axis from role: role is what a member
+    // may DO, scope is which conversations they may SEE. They compose
+    // (a gerente who also answers is admin + own), so this endpoint
+    // sets whichever the caller sent rather than demanding both.
+    if (body?.inbox_scope !== undefined) {
+      if (body.inbox_scope !== "all" && body.inbox_scope !== "own") {
+        return NextResponse.json(
+          { error: "'inbox_scope' must be 'all' or 'own'" },
+          { status: 400 },
+        );
+      }
+
+      const { error } = await ctx.supabase.rpc("set_member_inbox_scope", {
+        p_user_id: userId,
+        p_scope: body.inbox_scope,
+      });
+
+      if (error) return rpcErrorToResponse(error);
+      if (body.role === undefined) return NextResponse.json({ ok: true });
+    }
+
     const role = body?.role;
 
     if (!isAccountRole(role)) {

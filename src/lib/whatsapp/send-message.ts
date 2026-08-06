@@ -26,7 +26,7 @@ import {
   type InteractiveMessagePayload,
 } from '@/lib/whatsapp/interactive';
 import {
-  resolveConnection,
+  resolveConnectionForConversation,
   WhatsAppNotConfiguredError,
 } from '@/lib/whatsapp/uazapi-client';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
@@ -216,9 +216,17 @@ export async function sendMessageToConversation(
   }
   const sanitizedPhone = sendTargets[0];
 
-  let connection: Awaited<ReturnType<typeof resolveConnection>>;
+  // The conversation's own connection, not the account's. An account
+  // can hold several numbers since migration 044, and a reply has to
+  // leave from the number the customer wrote to — otherwise it lands
+  // as a message from a stranger, in a chat the customer never opened.
+  let connection: Awaited<ReturnType<typeof resolveConnectionForConversation>>;
   try {
-    connection = await resolveConnection(db, accountId);
+    connection = await resolveConnectionForConversation(
+      db,
+      accountId,
+      conversationId
+    );
   } catch (err) {
     if (err instanceof WhatsAppNotConfiguredError) {
       throw new SendMessageError('whatsapp_not_configured', err.message, 400);

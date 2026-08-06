@@ -24,8 +24,27 @@ interface UazapiConnectionRow {
 
 type ViewState = 'idle' | 'connecting' | 'awaiting_scan' | 'expired' | 'connected';
 
-export function UazapiConnect() {
-  const t = useTranslations('Settings.whatsapp.uazapi');
+interface UazapiConnectProps {
+  /**
+   * Which line this card manages.
+   *
+   * `account` is the house number — the connection an account had
+   * before operators existed, and the one automations fall back to.
+   * `mine` is the signed-in operator's own line: messages arriving on
+   * it land in their inbox and nobody else's (migration 044).
+   *
+   * The card is otherwise identical, which is the point — pairing a
+   * phone works the same either way.
+   */
+  scope?: 'account' | 'mine';
+}
+
+export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
+  // `Settings.whatsapp`, not `Settings.whatsapp.uazapi` — the latter is
+  // where this asked for four months and no such namespace exists, so
+  // every label on this card resolved to a missing message.
+  const t = useTranslations('Settings.whatsapp');
+  const isMine = scope === 'mine';
   const supabase = createClient();
   const { user, accountId, loading: authLoading, profileLoading } = useAuth();
 
@@ -51,24 +70,35 @@ export function UazapiConnect() {
     async (acctId: string) => {
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('whatsapp_config')
           .select('id, status, uazapi_instance_name')
           .eq('account_id', acctId)
-          .eq('provider', 'uazapi')
-          .maybeSingle();
+          .eq('provider', 'uazapi');
+
+        query = isMine
+          ? query.eq('operator_user_id', user?.id ?? '')
+          : query.is('operator_user_id', null);
+
+        // Ordered + limited rather than `.maybeSingle()`, which ERRORS
+        // on more than one row — and an account may now hold one line
+        // per operator (migration 044).
+        const { data, error } = await query
+          .order('created_at', { ascending: true })
+          .limit(1);
 
         if (error) {
           console.error('[uazapi] failed to load connection:', error);
         }
 
-        setConnection(data ?? null);
-        setViewState(data?.status === 'connected' ? 'connected' : 'idle');
+        const row = data?.[0] ?? null;
+        setConnection(row);
+        setViewState(row?.status === 'connected' ? 'connected' : 'idle');
       } finally {
         setLoading(false);
       }
     },
-    [supabase]
+    [supabase, isMine, user?.id]
   );
 
   useEffect(() => {
@@ -92,7 +122,9 @@ export function UazapiConnect() {
         return;
       }
       try {
-        const res = await fetch('/api/whatsapp/uazapi/status');
+        const res = await fetch(
+          `/api/whatsapp/uazapi/status?scope=${scope}`,
+        );
         if (!res.ok) return;
         const data = await res.json();
         if (data.connected) {
@@ -113,12 +145,16 @@ export function UazapiConnect() {
         console.error('[uazapi] status poll failed:', err);
       }
     }, POLL_INTERVAL_MS);
-  }, [accountId, fetchConnection, stopPolling, t]);
+  }, [accountId, fetchConnection, stopPolling, t, scope]);
 
   async function handleConnect() {
     setViewState('connecting');
     try {
-      const res = await fetch('/api/whatsapp/uazapi/connect', { method: 'POST' });
+      const res = await fetch('/api/whatsapp/uazapi/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope }),
+      });
       const data = await res.json();
 
       if (!res.ok) {
@@ -157,7 +193,11 @@ export function UazapiConnect() {
     setDisconnecting(true);
     stopPolling();
     try {
-      const res = await fetch('/api/whatsapp/uazapi/disconnect', { method: 'POST' });
+      const res = await fetch('/api/whatsapp/uazapi/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope }),
+      });
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error || t('connectError'));
@@ -189,8 +229,12 @@ export function UazapiConnect() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-foreground">{t('title')}</CardTitle>
-        <CardDescription className="text-muted-foreground">{t('description')}</CardDescription>
+        <CardTitle className="text-foreground">
+          {isMine ? t('mineTitle') : t('title')}
+        </CardTitle>
+        <CardDescription className="text-muted-foreground">
+          {isMine ? t('mineDescription') : t('description')}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <Alert className="bg-card border-border">

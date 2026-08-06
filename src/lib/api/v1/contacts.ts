@@ -78,8 +78,15 @@ export async function resolveAuditUserId(
     .from('whatsapp_config')
     .select('user_id')
     .eq('account_id', accountId)
-    .maybeSingle();
-  const configOwner = config?.user_id as string | undefined;
+    // House number first, then oldest — the same rule
+    // `resolveConnection` uses. `.maybeSingle()` was here, and it
+    // ERRORS on more than one row: since migration 044 an account may
+    // hold one connection per operator, which would have turned this
+    // into a hard failure the day a second number was paired.
+    .order('operator_user_id', { ascending: true, nullsFirst: true })
+    .order('created_at', { ascending: true })
+    .limit(1);
+  const configOwner = config?.[0]?.user_id as string | undefined;
   if (configOwner) return configOwner;
 
   const { data: account } = await db

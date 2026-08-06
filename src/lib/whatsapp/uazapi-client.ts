@@ -67,7 +67,19 @@ export interface ResolvedConnection {
 }
 
 /**
- * Load the account's WhatsApp connection and bind a sender to it.
+ * Load an account's default WhatsApp connection and bind a sender.
+ *
+ * "Default" means the house number — the connection with no operator
+ * assigned — falling back to the oldest one when every number belongs
+ * to somebody. Since migration 044 an account can hold several numbers
+ * (one per operator), so this answers "which number does the ACCOUNT
+ * speak with", which is only the right question when no conversation
+ * is in play: starting a thread from a typed number, validating a
+ * contact, a settings-level probe.
+ *
+ * Anything replying inside a conversation must use
+ * `resolveConnectionForConversation` instead — a reply has to leave
+ * from the number the customer wrote to.
  *
  * Throws `WhatsAppNotConfiguredError` when the account has not
  * connected a number yet — callers map that onto their own error shape
@@ -82,13 +94,78 @@ export async function resolveConnection(
     .select('*')
     .eq('account_id', accountId)
     .eq('provider', 'uazapi')
+    // House number first, then oldest. `nullsFirst` is what makes the
+    // unassigned connection win; without an explicit order this picked
+    // an arbitrary row once an account had more than one.
+    .order('operator_user_id', { ascending: true, nullsFirst: true })
+    .order('created_at', { ascending: true })
     .limit(1);
 
   if (error || !rows || rows.length === 0) {
     throw new WhatsAppNotConfiguredError();
   }
 
-  const config = rows[0];
+  return bindConnection(db, rows[0]);
+}
+
+/**
+ * Load the connection a specific conversation belongs to.
+ *
+ * This is the one that matters for replies. Each conversation records
+ * which connection delivered it (`whatsapp_config_id`, migration 037,
+ * kept current by the inbound pipeline), and a reply that left from a
+ * different number would reach the customer as a message from a
+ * stranger — in a chat they never opened.
+ *
+ * Falls back to the account default only when the conversation has no
+ * connection recorded, which is the case for threads created before
+ * migration 037 and for rows the 044 backfill could not resolve.
+ */
+export async function resolveConnectionForConversation(
+  db: SupabaseClient,
+  accountId: string,
+  conversationId: string
+): Promise<ResolvedConnection> {
+  const { data: conversation, error: convError } = await db
+    .from('conversations')
+    .select('whatsapp_config_id')
+    .eq('id', conversationId)
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  if (convError) {
+    console.error(
+      '[uazapi-client] conversation lookup failed, using the account default:',
+      convError.message
+    );
+    return resolveConnection(db, accountId);
+  }
+
+  const configId = conversation?.whatsapp_config_id as string | null | undefined;
+  if (!configId) return resolveConnection(db, accountId);
+
+  const { data: rows, error } = await db
+    .from('whatsapp_config')
+    .select('*')
+    .eq('id', configId)
+    .eq('account_id', accountId)
+    .eq('provider', 'uazapi')
+    .limit(1);
+
+  // A connection that was deleted while its conversations survived
+  // leaves a dangling id. Better to answer from the account default
+  // than to refuse to reply at all.
+  if (error || !rows || rows.length === 0) {
+    return resolveConnection(db, accountId);
+  }
+
+  return bindConnection(db, rows[0]);
+}
+
+function bindConnection(
+  db: SupabaseClient,
+  config: WhatsappConfigRow
+): ResolvedConnection {
   const instanceToken = decryptAndMaybeUpgrade(
     db,
     config.id,

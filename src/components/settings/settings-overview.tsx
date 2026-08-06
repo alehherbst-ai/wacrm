@@ -107,7 +107,12 @@ export function SettingsOverview({
           .select('uazapi_instance_id, status')
           .eq('account_id', acctId)
           .eq('provider', 'uazapi')
-          .maybeSingle(),
+          // House number first, then oldest — `.maybeSingle()` errors
+          // on more than one row, and an account may now hold one
+          // connection per operator (migration 044).
+          .order('operator_user_id', { ascending: true, nullsFirst: true })
+          .order('created_at', { ascending: true })
+          .limit(1),
         fetch('/api/whatsapp/uazapi/status', { cache: 'no-store' }).then((r) =>
           r.json(),
         ),
@@ -117,7 +122,9 @@ export function SettingsOverview({
         // "configured" = an instance exists at all; "connected" = the
         // phone is actually paired right now (the QR was scanned and the
         // session is live), which only the live status probe can answer.
-        configured: row.status === 'fulfilled' && !!row.value.data?.uazapi_instance_id,
+        configured:
+          row.status === 'fulfilled' &&
+          !!row.value.data?.[0]?.uazapi_instance_id,
         connected: health.status === 'fulfilled' && !!health.value?.connected,
       });
       setWhatsappLoading(false);
