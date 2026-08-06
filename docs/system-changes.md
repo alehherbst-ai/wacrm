@@ -6,6 +6,82 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-06] Operadores — migrations aplicadas em produção e dois defeitos corrigidos
+
+> **Requer migration.** `supabase/migrations/046_operators_fix_unique_and_chain.sql`,
+> aplicada **depois** da 045. O cabeçalho traz o SQL de reversão.
+> As 044, 045 e 046 já estão aplicadas no projeto de produção
+> (`qinerutevsfzyhdmqpbm`); falta apenas o deploy do código.
+
+**Antes:** as etapas 1 e 2 tinham sido escritas e revisadas, mas nunca
+executadas contra um banco — a máquina de desenvolvimento não tinha
+Postgres, CLI do Supabase nem Docker. Ao conferir o estado real do banco,
+descobriu-se que a **044 já estava aplicada** em produção (todos os
+índices, policies, funções e o gatilho conferiam com o arquivo), ao
+contrário do que se supunha. Rodar as duas contra dados reais expôs dois
+defeitos que não davam erro nenhum ao aplicar — os dois só apareceriam no
+dia em que alguém tentasse *usar* o modelo de operadores:
+
+1. **A constraint que a 044 não derrubou.** A 044 derruba
+   `whatsapp_config_account_id_key`, a `UNIQUE(account_id)` criada pela
+   migration 017. Só que a **migration 037 já tinha trocado essa
+   constraint** por `whatsapp_config_account_id_provider_key`, uma
+   `UNIQUE(account_id, provider)`. O `DROP ... IF EXISTS` da 044 não achou
+   nada para derrubar e passou calado, e a constraint que de fato bloqueia
+   o modelo continuou de pé. Resultado: conectar um **segundo número
+   uazapi** na mesma conta falhava com 23505 — ou seja, o propósito
+   inteiro da Etapa 1 era impossível. Como a conta só tinha um número
+   conectado, nada disso aparecia na interface, e a 044 parecia aplicada e
+   correta.
+2. **`transfer_chain_id` sem default.** A 045 afirma que "toda conversa é
+   uma cadeia de um elo só", mas garante isso com um `UPDATE` único,
+   executado no instante em que a migration roda. A coluna ficou sem
+   DEFAULT e sem gatilho, então **toda conversa criada depois nascia com a
+   cadeia NULL**, e o invariante se quebrava sozinho já na primeira
+   mensagem nova. Com a cadeia NULL, o bloco de histórico herdado desiste
+   (`message-thread.tsx` verifica `!chainId`) e o ramo de cadeia de
+   `can_read_conversation` é pulado.
+
+**Depois:**
+- A `UNIQUE(account_id, provider)` foi derrubada. A unicidade continua
+  garantida — e de forma mais estrita — pelos dois índices parciais da
+  044: um número por operador, no máximo um número da casa por conta.
+- Um gatilho `BEFORE INSERT` em `conversations` preenche
+  `transfer_chain_id` com o próprio `id` quando ele vem vazio. É gatilho e
+  não DEFAULT porque uma expressão de DEFAULT não enxerga as outras
+  colunas da linha — não há como escrever "o meu próprio id" ali. O
+  `COALESCE` preserva a cadeia que `transfer_conversation` já grava na
+  conversa de destino. Por ser no banco, vale também para o webhook de
+  entrada, que escreve com a service role.
+- **40 testes de comportamento** rodados contra o schema real, dentro de
+  transações revertidas ao final (nenhum resíduo em produção): escopo de
+  leitura `own`/`all`, a equivalência de `all` com `is_account_member`,
+  bloqueio de auto-promoção de `inbox_scope` e `account_role` (42501), os
+  três índices únicos incluindo o caso do `COALESCE` com número NULL,
+  `transfer_conversation` ponta a ponta com as quatro recusas (grupo,
+  destinatário sem número, para si mesmo, observador), a devolução
+  reaproveitando a conversa de origem, o pause do fluxo ativo, e a
+  assimetria central: quem recebeu **lê** as mensagens da origem e **não
+  escreve** nelas (0 linhas no UPDATE, 42501 no INSERT).
+
+**Resolvido:** o modelo de operadores agora funciona de fato. Sem a
+correção 1, o primeiro operador a tentar parear o próprio celular
+receberia um erro de chave duplicada e a Etapa 1 nunca sairia do papel —
+era um defeito invisível, que só se revelaria em produção, no pior
+momento. Sem a correção 2, a herança de histórico degradaria em silêncio
+para toda conversa criada depois da migration.
+
+**Nota de segurança (verificada, não é vulnerabilidade):** o
+`REVOKE ALL ... FROM PUBLIC` das 044/045 não tira o `anon` das RPCs — o
+Supabase re-concede EXECUTE ao `anon` por default privileges. Testado na
+prática: o `anon` recebe 42501 em `transfer_conversation` e em
+`set_member_inbox_scope` (as duas exigem `auth.uid()` não nulo) e lê zero
+linhas de `conversations` e `messages`. O alerta do advisor do Supabase
+sobre isso vale para 22 funções `SECURITY DEFINER` do projeto inteiro, não
+é novidade destas migrations.
+
+Arquivos: `supabase/migrations/046_operators_fix_unique_and_chain.sql` (novo)
+
 ## [2026-08-06] Operadores, Etapa 2 — transferir conversa com histórico herdado
 
 > **Requer migration.** `supabase/migrations/045_conversation_transfer.sql`,
