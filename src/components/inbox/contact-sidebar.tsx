@@ -21,6 +21,7 @@ import {
   Tag as TagIcon,
   DollarSign,
   StickyNote,
+  CalendarCheck,
   Plus,
   X,
 } from "lucide-react";
@@ -35,6 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DealForm } from "@/components/pipelines/deal-form";
+import { ContactActivitiesPanel } from "@/components/activities/contact-activities-panel";
 import { format } from "date-fns";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -506,6 +508,23 @@ export function ContactSidebar({ contact, onTagsChanged }: ContactSidebarProps) 
                   </button>
                 ))
               )}
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="my-4 border-t border-border" />
+
+          {/* Activities — same panel the contact drawer uses, so the
+              create/complete/delete behaviour (and the `contact_id`
+              binding on the new activity) is identical wherever it's
+              opened from. It owns its own fetch, keyed on contact.id. */}
+          <div>
+            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <CalendarCheck className="h-3 w-3" />
+              {tSidebar("activities")}
+            </div>
+            <div className="mt-2">
+              <ContactActivitiesPanel contact={contact} />
             </div>
           </div>
 
