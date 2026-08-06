@@ -26,6 +26,7 @@ import {
   PanelRightOpen,
   PanelRightClose,
   Users,
+  ArrowRightLeft,
 } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -46,6 +47,13 @@ import {
 } from "./message-composer";
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { rowsEqual } from "@/lib/inbox/rows-equal";
+import {
+  buildSegments,
+  orderChain,
+  threadRole,
+  type ChainSegment,
+} from "@/lib/inbox/transfer-chain";
+import { TransferDialog } from "./transfer-dialog";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
@@ -100,6 +108,14 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  /**
+   * Fired with the destination conversation id after a transfer. The
+   * page owns selection, so it decides whether to follow the thread to
+   * its new owner — which it can only do for someone who sees that
+   * number; for an operator handing work away, the new thread is not
+   * theirs to open.
+   */
+  onTransferred?: (conversationId: string) => void;
 }
 
 function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
@@ -158,11 +174,12 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
+  onTransferred,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tQuote = useTranslations("Inbox.replyQuote");
 
-  const { user } = useAuth();
+  const { user, canSendMessages, seesEveryConversation } = useAuth();
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -191,6 +208,25 @@ export function MessageThread({
     }, 700);
   }, [isRefreshing, onRefresh]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
+
+  /**
+   * The links of the transfer chain BEFORE this one, with their
+   * messages — the inherited history rendered above the divider.
+   *
+   * Held separately from `messages` (which stays exactly what it was:
+   * this conversation's own messages, kept live by realtime and by the
+   * optimistic send path) so none of that machinery had to learn about
+   * chains. Inherited history is read-only and changes rarely, so it
+   * rides the existing `resyncToken` instead of its own subscription —
+   * which is also what makes a message the customer sends to the
+   * previous operator's number show up here on the next resync.
+   */
+  const [inherited, setInherited] = useState<ChainSegment[]>([]);
+  /** Connection id → the operator who owns that number. */
+  const [operatorByConnection, setOperatorByConnection] = useState<
+    Map<string, string>
+  >(new Map());
+  const [transferOpen, setTransferOpen] = useState(false);
 
   // Profiles are bounded by RLS to rows the current user is allowed to
   // see — today that's just the current user, but the dropdown keeps the
@@ -226,6 +262,32 @@ export function MessageThread({
   useEffect(() => {
     onMessagesLoadedRef.current = onMessagesLoaded;
   });
+
+  // Which numbers belong to whom. Needed twice: to name the operator
+  // on each inherited divider, and to tell whether this thread is the
+  // signed-in user's to answer or somebody else's to watch.
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    (async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_config")
+        .select("id, operator_user_id");
+      if (cancelled) return;
+      if (error) {
+        console.error("Failed to load connections:", error.message);
+        return;
+      }
+      const map = new Map<string, string>();
+      for (const row of data ?? []) {
+        if (row.operator_user_id) map.set(row.id, row.operator_user_id);
+      }
+      setOperatorByConnection(map);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // What's currently on screen, readable from inside the async fetch.
   // The safety-net refetch compares against this so an unchanged result
@@ -297,6 +359,93 @@ export function MessageThread({
     // realtime is best-effort and any message events sent while the WS
     // was disconnected or throttled are otherwise lost.
   }, [conversationId, resyncToken]);
+
+  /**
+   * Inherited history: every earlier link of the transfer chain, with
+   * its messages.
+   *
+   * Two queries rather than one join so the empty links survive — a
+   * thread that was handed on before anyone wrote in it still needs
+   * its divider, which is what explains the jump from one number to
+   * the next.
+   *
+   * RLS decides what comes back. An operator can read the whole chain
+   * they are part of and nothing else, so a thread that was never
+   * transferred simply returns itself and this renders nothing.
+   */
+  const chainId = conversation?.transfer_chain_id ?? null;
+  useEffect(() => {
+    if (!conversationId || !chainId) {
+      setInherited([]);
+      return;
+    }
+    const supabase = createClient();
+    let cancelled = false;
+
+    (async () => {
+      const { data: links, error: linksError } = await supabase
+        .from("conversations")
+        .select("*")
+        .eq("transfer_chain_id", chainId);
+
+      if (cancelled) return;
+      if (linksError) {
+        console.error("Failed to load the transfer chain:", linksError.message);
+        return;
+      }
+
+      const chain = (links ?? []) as Conversation[];
+      // A chain of one is the overwhelmingly common case — never
+      // transferred. Nothing to inherit, and no second query.
+      if (chain.length <= 1) {
+        setInherited((prev) => (prev.length === 0 ? prev : []));
+        return;
+      }
+
+      const olderIds = chain
+        .map((c) => c.id)
+        .filter((id) => id !== conversationId);
+
+      const { data: olderMessages, error: messagesError } = await supabase
+        .from("messages")
+        .select("*")
+        .in("conversation_id", olderIds)
+        .order("created_at", { ascending: true });
+
+      if (cancelled) return;
+      if (messagesError) {
+        console.error(
+          "Failed to load inherited messages:",
+          messagesError.message,
+        );
+        return;
+      }
+
+      const ordered = orderChain(chain, conversationId);
+      const segments = buildSegments(
+        ordered,
+        (olderMessages ?? []) as Message[],
+        conversationId,
+        (link) => {
+          const operatorId = link.whatsapp_config_id
+            ? operatorByConnection.get(link.whatsapp_config_id)
+            : undefined;
+          if (!operatorId) return null;
+          const profile = profiles.find((p) => p.user_id === operatorId);
+          return profile?.full_name ?? null;
+        },
+      );
+      // Only the links before this one; the current conversation's own
+      // messages keep coming from `messages`, live.
+      setInherited(segments.filter((segment) => !segment.isCurrent));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // `resyncToken` is what makes a reply the customer sent to the
+    // previous operator's number appear here without a reload.
+  }, [conversationId, chainId, resyncToken, operatorByConnection, profiles]);
 
   // Reactions fetch — pulls the current state from the DB. Kept separate
   // from the channel subscription below so a `resyncToken` bump just
@@ -783,6 +932,33 @@ export function MessageThread({
 
   const displayName = contact.name || contact.phone;
   const messageGroups = groupMessagesByDate(messages);
+
+  // Is this thread mine to answer, or somebody else's to watch?
+  const myConnectionIds = new Set(
+    [...operatorByConnection.entries()]
+      .filter(([, operatorId]) => operatorId === user?.id)
+      .map(([connectionId]) => connectionId),
+  );
+  const role = threadRole({
+    conversation,
+    myConnectionIds,
+    seesEverything: seesEveryConversation,
+  });
+  const isObserving = role.kind === "observer";
+  // Who to name in "you're following <name>'s conversation".
+  const ownerName = (() => {
+    const operatorId = conversation.whatsapp_config_id
+      ? operatorByConnection.get(conversation.whatsapp_config_id)
+      : undefined;
+    if (!operatorId) return null;
+    return profiles.find((p) => p.user_id === operatorId)?.full_name ?? null;
+  })();
+
+  // Groups are never transferable: a WhatsApp group lives on one
+  // number and the person receiving it is not a member, so the thread
+  // created for them could neither receive nor deliver anything.
+  const canTransfer =
+    canSendMessages && !contact.is_group && role.kind === "owner";
   const currentStatus = STATUS_OPTIONS.find(
     (s) => s.value === conversation.status
   );
@@ -889,6 +1065,22 @@ export function MessageThread({
               <RefreshCw
                 className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
               />
+            </button>
+          )}
+
+          {/* Hand this conversation to another operator. Hidden on
+              groups (a group lives on one number and the recipient
+              isn't in it) and while observing (you can't pass on what
+              isn't yours to answer). */}
+          {canTransfer && (
+            <button
+              type="button"
+              onClick={() => setTransferOpen(true)}
+              aria-label={t("transferConversation")}
+              title={t("transferConversation")}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5" />
             </button>
           )}
 
@@ -1018,11 +1210,68 @@ export function MessageThread({
 
       {/* Messages Area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+        {/* Inherited history — every earlier link of the transfer
+            chain. Read-only on purpose: these messages went out on a
+            number that is not this thread's, so the reply and reaction
+            affordances are omitted rather than shown-and-broken. The
+            WhatsApp ids they carry belong to another connection, which
+            is exactly why a copy-based transfer could not have offered
+            them either. */}
+        {inherited.map((segment) => (
+          <div key={segment.conversation.id} className="mb-4">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="h-px flex-1 bg-border" />
+              <span className="rounded-full bg-muted px-3 py-1 text-[10px] font-medium text-muted-foreground">
+                {segment.operatorName
+                  ? t("inheritedFrom", { operator: segment.operatorName })
+                  : t("inheritedHistory")}
+              </span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+
+            {segment.messages.length === 0 ? (
+              <p className="py-2 text-center text-[11px] text-muted-foreground">
+                {t("inheritedEmpty")}
+              </p>
+            ) : (
+              <div className="space-y-2 opacity-75">
+                {groupMessagesByDate(segment.messages).map((group) => (
+                  <div key={`${segment.conversation.id}-${group.date}`}>
+                    <div className="mb-3 flex items-center justify-center">
+                      <span className="rounded-full bg-muted px-3 py-1 text-[10px] font-medium text-muted-foreground">
+                        {formatDateSeparator(group.date, t)}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {group.messages.map((msg) => (
+                        <MessageBubble key={msg.id} message={msg} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* The boundary. Not decoration: everything above came from
+            another number and can only be read; everything below is
+            this thread, where replying, quoting and reacting work. */}
+        {inherited.length > 0 && (
+          <div className="mb-5 mt-1 flex items-center gap-2">
+            <span className="h-px flex-1 bg-primary/40" />
+            <span className="rounded-full bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
+              {t("chainDivider")}
+            </span>
+            <span className="h-px flex-1 bg-primary/40" />
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
-        ) : messages.length === 0 ? (
+        ) : messages.length === 0 && inherited.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
             <p className="text-sm text-muted-foreground">{t("noMessagesYet")}</p>
             <p className="text-xs text-muted-foreground">
@@ -1108,15 +1357,47 @@ export function MessageThread({
         }}
       />
 
-      {/* Composer */}
-      <MessageComposer
-        conversationId={conversation.id}
-        onSend={handleSend}
-        onSendMedia={handleSendMedia}
-        onSendInteractive={handleSendInteractive}
-        replyTo={replyTo}
-        onClearReply={() => setReplyTo(null)}
-      />
+      {/* Composer — or the reason there isn't one.
+          Exactly one operator answers a conversation at a time; the
+          others read it. Swapping the composer for a sentence that
+          names who IS answering beats a disabled text box that leaves
+          the agent guessing whether the app is broken. */}
+      {isObserving ? (
+        <div className="border-t border-border bg-card px-4 py-3">
+          <p className="text-center text-xs text-muted-foreground">
+            {role.reason === "handed-over"
+              ? t("observingHandedOver")
+              : ownerName
+                ? t("observingOther", { operator: ownerName })
+                : t("observingUnknown")}
+          </p>
+        </div>
+      ) : (
+        <MessageComposer
+          conversationId={conversation.id}
+          onSend={handleSend}
+          onSendMedia={handleSendMedia}
+          onSendInteractive={handleSendInteractive}
+          replyTo={replyTo}
+          onClearReply={() => setReplyTo(null)}
+        />
+      )}
+
+      {canTransfer && (
+        <TransferDialog
+          open={transferOpen}
+          onOpenChange={setTransferOpen}
+          conversationId={conversation.id}
+          contactName={displayName}
+          onTransferred={(destinationId) => {
+            // The thread the agent was in is no longer theirs to
+            // answer. Refetching is what flips it to the observing
+            // state without a reload; the parent opens the new one.
+            onRefresh?.();
+            onTransferred?.(destinationId);
+          }}
+        />
+      )}
     </div>
   );
 }

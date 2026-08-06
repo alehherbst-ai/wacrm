@@ -6,6 +6,41 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-06] Operadores, Etapa 2 — transferir conversa com histórico herdado
+
+> **Requer migration.** `supabase/migrations/045_conversation_transfer.sql`,
+> aplicada **depois** da 044. O cabeçalho traz o SQL de reversão.
+> **Branch `feat/operadores-multi-numero`.**
+
+**Antes:** com a Etapa 1, cada operador tinha o próprio número e a própria caixa — mas não havia como passar uma conversa adiante. Quem precisasse repassar um atendimento só podia contar o caso por fora; o outro operador começava do zero, sem nada do que já tinha sido dito.
+
+**Depois:**
+- **Transferir não copia nada.** A conversa de destino (no número de quem recebe) guarda uma referência à de origem, e as duas passam a compartilhar um `transfer_chain_id`. A tela desenha o histórico anterior acima de uma divisória, somente leitura, e o atendimento novo abaixo.
+- **Cadeia inteira.** Se o Bruno passar para o Carlos, o Carlos herda desde a Ana, com uma divisória por passagem.
+- **Leitura alcança a cadeia; escrita não.** `can_read_conversation` aceita "algum elo desta cadeia é do meu número"; a escrita continua em `can_access_conversation`, sem cadeia. É isso que implementa "um dono ativo por vez, os demais observam" — e é o banco que impõe, não a tela.
+- **Reabertura automática.** O cliente continua com o número antigo e pode escrever nele. Quando escreve, o pipeline de entrada limpa `handed_over_at` e a conversa volta a ser da Ana; o Bruno segue vendo tudo, porque está na mesma cadeia.
+- **Mensagem de abertura sugerida, não obrigatória** — vem pronta e marcada. Sem ela o cliente não fica sabendo de nada e continua escrevendo para o número antigo; a caixinha explica isso na própria tela.
+- **Grupos não são transferíveis** e o botão não aparece neles.
+
+**Decisões que vale registrar:**
+1. **Referência em vez de cópia** foi escolha de projeto, discutida antes de codar. Copiar quebraria a resposta a mensagens antigas (a cópia não carrega o id que o WhatsApp deu à mensagem), dobraria contagens em não lidas e relatórios, e envelheceria na hora que o cliente escrevesse no número antigo. O ganho colateral: o Bruno ver as mensagens novas da Ana sai de graça — elas estão na cadeia.
+2. **`transfer_chain_id` em vez de recursão.** A pergunta "esta conversa é parente de alguma minha?" roda em toda linha avaliada pela RLS. Uma coluna indexável responde em uma comparação; um CTE recursivo por linha não é algo que uma policy possa se dar ao luxo de fazer.
+3. **A mensagem de abertura usa o cliente de serviço**, não o do usuário. A conversa de destino é do número do outro operador, e escrever ali é justamente o que a RLS recusa. A autorização já tinha sido estabelecida pelo RPC uma instrução antes — a mensagem é o rabo daquela operação aprovada, não um ato novo.
+4. **Falha na mensagem de abertura não desfaz a transferência.** Uma transferência pela metade seria pior que uma sem saudação: a saudação se redigita, uma transferência rasgada não se enxerga.
+5. **O estado "entregue" é regra de fluxo, não fronteira de segurança**, e por isso vive na tela e não na RLS. A Ana responder a própria conversa transferida não é violação — é bagunça. A separação está documentada no código.
+
+**Verificação:** typecheck limpo, build limpo, lint 0 erros, 146 testes nas áreas tocadas. 15 testes novos em `transfer-chain.test.ts` cobrem a ordenação por ponteiros (inclusive com timestamps idênticos), a fusão de cadeias, ciclos de ponteiro, e as três formas de ser observador.
+
+**Não verificado:** o SQL não foi executado — não há Postgres nesta máquina.
+
+Arquivos: `supabase/migrations/045_conversation_transfer.sql` (novo),
+`src/lib/inbox/transfer-chain.ts` (novo), `src/lib/inbox/transfer-chain.test.ts` (novo),
+`src/components/inbox/transfer-dialog.tsx` (novo),
+`src/app/api/whatsapp/conversations/transfer/route.ts` (novo),
+`src/components/inbox/message-thread.tsx`, `src/app/(dashboard)/inbox/page.tsx`,
+`src/lib/whatsapp/inbound-pipeline.ts`, `src/hooks/use-auth.tsx`,
+`src/types/index.ts`, `messages/*.json`
+
 ## [2026-08-06] Tela de payload cru: era cache de CDN, não erro de código
 
 > Retoma a entrada de 2026-08-06 "Erro no app virava tela de payload cru", que

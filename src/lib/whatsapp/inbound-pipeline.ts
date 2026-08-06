@@ -288,6 +288,14 @@ export async function processInboundMessage(
       // Unconditional because writing NULL over NULL costs nothing and
       // keeps this a single statement.
       archived_at: null,
+      // …and hands it back to whoever owns this number (migration 045).
+      // A transferred thread goes read-only for its old operator, but
+      // the customer still has that number and may well write to it
+      // again — about something else entirely. When they do, they have
+      // chosen who they want to talk to, and the thread reopens for
+      // that person. Whoever received the transfer keeps seeing these
+      // messages: they are in the same chain.
+      handed_over_at: null,
     })
     .eq('id', conversation.id);
 
@@ -427,6 +435,12 @@ async function recordOwnDeviceMessage(args: {
       // Answering an archived thread brings it back into the inbox, the
       // same as sending from the composer does (migration 040).
       archived_at: null,
+      // Answering a transferred thread from the phone takes it back
+      // (migration 045). Nothing here could have stopped that send, and
+      // pretending the operator is still merely observing — while they
+      // are visibly in the conversation — would leave the CRM
+      // describing something that is not happening.
+      handed_over_at: null,
     })
     .eq('id', conversation.id);
 

@@ -226,7 +226,15 @@
       "selectConversation": "Selecione uma conversa",
       "selectConversationHint": "Escolha uma conversa à esquerda para começar a conversar",
       "today": "Hoje",
-      "yesterday": "Ontem"
+      "yesterday": "Ontem",
+      "transferConversation": "Transferir conversa",
+      "inheritedFrom": "Histórico herdado de {operator}",
+      "inheritedHistory": "Histórico herdado",
+      "inheritedEmpty": "Nenhuma mensagem neste trecho",
+      "chainDivider": "Daqui para baixo é o seu atendimento",
+      "observingHandedOver": "Você transferiu esta conversa. Está acompanhando — se o cliente escrever aqui de novo, ela volta a ser sua.",
+      "observingOther": "Esta conversa é do número de {operator}. Você está acompanhando.",
+      "observingUnknown": "Esta conversa é de outro número. Você está acompanhando."
     },
     "composer": {
       "draftHint": "Toque no ✨ para rascunhar uma resposta com IA — você pode editar antes de enviar",
@@ -314,6 +322,22 @@
       "resumed": "IA retomada.",
       "updateError": "Não foi possível atualizar o assistente de IA.",
       "networkError": "Não foi possível conectar ao servidor."
+    },
+    "transfer": {
+      "title": "Transferir conversa",
+      "description": "A conversa continua no número do operador que receber, com todo o histórico visível acima de uma divisória.",
+      "operatorLabel": "Transferir para",
+      "noOperators": "Ninguém mais tem um número de WhatsApp conectado. Conecte o número da pessoa em Configurações antes de transferir.",
+      "unnamedOperator": "Operador sem nome",
+      "sendOpening": "Enviar uma mensagem de apresentação",
+      "sendOpeningHint": "O cliente não é avisado da transferência e continua com o número antigo. Sem esta mensagem, ele não terá conversa nenhuma com o novo operador.",
+      "openingSuggestion": "Oi! Aqui é {operator}. Vou continuar o seu atendimento a partir daqui.",
+      "cancel": "Cancelar",
+      "confirm": "Transferir",
+      "transferring": "Transferindo...",
+      "done": "Conversa transferida para {operator}",
+      "openingFailed": "A conversa foi transferida, mas a mensagem de apresentação não saiu. Envie você mesmo pela conversa nova.",
+      "error": "Não foi possível transferir a conversa."
     }
   },
   "Contacts": {

@@ -226,6 +226,29 @@ export interface Conversation {
   created_at: string;
   updated_at: string;
   contact?: Contact;
+  /** Which WhatsApp number this thread arrived on (migration 037). */
+  whatsapp_config_id?: string | null;
+  /**
+   * Transfer chain (migration 045). Every thread that has passed
+   * between operators about the same contact shares this id, and each
+   * link renders the ones before it as inherited, read-only history
+   * above a divider. A thread that was never transferred is a chain of
+   * one — its own id.
+   */
+  transfer_chain_id?: string | null;
+  /** The link before this one, i.e. who handed it over. */
+  inherited_from_conversation_id?: string | null;
+  /** The link after this one, set on the thread that was handed away. */
+  transferred_to_conversation_id?: string | null;
+  transferred_at?: string | null;
+  transferred_by_user_id?: string | null;
+  /**
+   * Set while this thread has been handed to somebody else: its owner
+   * is observing, not answering. Cleared the moment the customer
+   * writes to this number again — at which point they have chosen who
+   * they want to talk to, and it is this operator's thread once more.
+   */
+  handed_over_at?: string | null;
   /**
    * AI auto-reply state for this thread (migration 029 + 033):
    *  - `ai_autoreply_disabled` — the bot is paused here (a human took

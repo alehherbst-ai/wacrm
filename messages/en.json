@@ -226,7 +226,15 @@
       "selectConversation": "Select a conversation",
       "selectConversationHint": "Choose a conversation from the left to start messaging",
       "today": "Today",
-      "yesterday": "Yesterday"
+      "yesterday": "Yesterday",
+      "transferConversation": "Transfer conversation",
+      "inheritedFrom": "History inherited from {operator}",
+      "inheritedHistory": "Inherited history",
+      "inheritedEmpty": "No messages in this stretch",
+      "chainDivider": "Your part of the conversation starts here",
+      "observingHandedOver": "You transferred this conversation. You're following it — if the customer writes here again, it comes back to you.",
+      "observingOther": "This conversation belongs to {operator}'s number. You're following it.",
+      "observingUnknown": "This conversation belongs to another number. You're following it."
     },
     "composer": {
       "draftHint": "Tap the ✨ to draft a reply with AI — you can edit it before sending",
@@ -314,6 +322,22 @@
       "resumed": "AI resumed.",
       "updateError": "Couldn’t update the AI assistant.",
       "networkError": "Couldn’t reach the server."
+    },
+    "transfer": {
+      "title": "Transfer conversation",
+      "description": "The conversation continues on the receiving operator's number, with the whole history visible above a divider.",
+      "operatorLabel": "Transfer to",
+      "noOperators": "Nobody else has a WhatsApp number connected. Connect their number in Settings before transferring.",
+      "unnamedOperator": "Unnamed operator",
+      "sendOpening": "Send an introduction message",
+      "sendOpeningHint": "The customer isn't told about the transfer and still has the old number. Without this message they have no chat with the new operator at all.",
+      "openingSuggestion": "Hi! This is {operator}. I'll be taking over from here.",
+      "cancel": "Cancel",
+      "confirm": "Transfer",
+      "transferring": "Transferring...",
+      "done": "Conversation transferred to {operator}",
+      "openingFailed": "The conversation was transferred, but the introduction message didn't go out. Send it yourself from the new thread.",
+      "error": "Could not transfer the conversation."
     }
   },
   "Contacts": {

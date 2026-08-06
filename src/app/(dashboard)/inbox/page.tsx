@@ -637,6 +637,44 @@ function InboxPageInner() {
     [router, t],
   );
 
+  /**
+   * A conversation was just handed to another operator.
+   *
+   * The destination thread lives on THEIR number, so for an operator
+   * scoped to their own inbox it isn't theirs to open — RLS won't even
+   * return it. Rather than guess, try to open it and fall back to
+   * simply refreshing: a gestor (or anyone who can see that number)
+   * follows the conversation to its new home, and everyone else stays
+   * put and watches their side flip to the observing state.
+   */
+  const handleTransferred = useCallback(
+    async (conversationId: string) => {
+      setResyncToken((n) => n + 1);
+
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("conversations")
+        .select(CONVERSATION_SELECT)
+        .eq("id", conversationId)
+        .maybeSingle();
+
+      if (!data) return;
+
+      const conv = normalizeConversation(data);
+      setConversations((prev) =>
+        prev.some((c) => c.id === conv.id)
+          ? prev.map((c) => (c.id === conv.id ? { ...c, ...conv } : c))
+          : [conv, ...prev],
+      );
+      setActiveConversation(conv);
+      setActiveContact(conv.contact ?? null);
+      setMessages([]);
+      autoSelectedForDeepLinkRef.current = conv.id;
+      router.replace(`/inbox?c=${conv.id}`, { scroll: false });
+    },
+    [router],
+  );
+
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {
     setMessages(loaded);
   }, []);
@@ -760,6 +798,7 @@ function InboxPageInner() {
             onRefresh={handleManualRefresh}
             contactPanelOpen={contactPanelOpen}
             onToggleContactPanel={handleToggleContactPanel}
+            onTransferred={handleTransferred}
           />
         </div>
 

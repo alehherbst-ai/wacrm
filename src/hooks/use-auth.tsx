@@ -12,6 +12,7 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import type { InboxScope } from "@/types";
 import { DEFAULT_CURRENCY } from "@/lib/currency";
 import {
   canEditSettings as canEditSettingsFor,
@@ -35,6 +36,13 @@ interface Profile {
   beta_features: string[];
   account_id: string | null;
   account_role: AccountRole | null;
+  /**
+   * Which conversations this member sees (migration 044). Orthogonal
+   * to `account_role`: the role is what they may DO, this is what they
+   * may SEE. 'own' limits the inbox to conversations arriving on their
+   * own WhatsApp number.
+   */
+  inbox_scope: InboxScope;
 }
 
 interface AccountSummary {
@@ -102,6 +110,14 @@ interface AuthContextValue {
   canEditSettings: boolean;
   /** True if the caller can send messages and edit operational data (agent+). */
   canSendMessages: boolean;
+  /**
+   * Which conversations this member sees. Defaults to 'all' while the
+   * profile loads and for anyone the column has not been set on, which
+   * is the pre-044 behaviour.
+   */
+  inboxScope: InboxScope;
+  /** True when the member sees every conversation on the account. */
+  seesEveryConversation: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -138,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase
         .from("profiles")
         .select(
-          "id, full_name, email, avatar_url, role, beta_features, account_id, account_role",
+          "id, full_name, email, avatar_url, role, beta_features, account_id, account_role, inbox_scope",
         )
         .eq("user_id", userId)
         .maybeSingle();
@@ -212,6 +228,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           beta_features: data.beta_features ?? [],
           account_id: data.account_id ?? null,
           account_role: accountRole,
+          // 'all' unless the column explicitly says otherwise — a
+          // database that has not run migration 044 returns undefined
+          // here, and that must not lock anyone out of their inbox.
+          inbox_scope: data.inbox_scope === "own" ? "own" : "all",
         });
         setAccount(accountRow);
       } else {
@@ -320,6 +340,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // dependencies downstream.
   const derived = useMemo(() => {
     const role = profile?.account_role ?? null;
+    // Anything unrecognised — including the column being absent on a
+    // database that has not run migration 044 — reads as 'all', which
+    // is how the inbox behaved before scopes existed.
+    const scope: InboxScope = profile?.inbox_scope === "own" ? "own" : "all";
     return {
       accountRole: role,
       accountId: profile?.account_id ?? null,
@@ -330,8 +354,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canManageMembers: role ? canManageMembersFor(role) : false,
       canEditSettings: role ? canEditSettingsFor(role) : false,
       canSendMessages: role ? canSendMessagesFor(role) : false,
+      inboxScope: scope,
+      seesEveryConversation: scope === "all",
     };
-  }, [profile?.account_role, profile?.account_id]);
+  }, [profile?.account_role, profile?.account_id, profile?.inbox_scope]);
 
   return (
     <AuthContext.Provider
@@ -383,6 +409,8 @@ export function useAuth(): AuthContextValue {
       canManageMembers: false,
       canEditSettings: false,
       canSendMessages: false,
+      inboxScope: "all" as InboxScope,
+      seesEveryConversation: true,
     };
   }
   return ctx;
