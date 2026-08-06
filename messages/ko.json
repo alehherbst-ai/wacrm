@@ -11,6 +11,9 @@
     "passwordPlaceholder": "비밀번호를 입력하세요",
     "signingIn": "로그인 중...",
     "signIn": "로그인",
+    "sessionExpired": "세션이 만료되었거나 확인할 수 없습니다. 다시 로그인해 주세요.",
+    "errorSessionNotStored": "이 브라우저에 세션을 저장할 수 없습니다. 이 사이트의 쿠키가 허용되어 있는지 확인한 뒤 다시 시도하세요.",
+    "errorNetwork": "서버에 연결할 수 없습니다. 인터넷 연결을 확인한 뒤 다시 시도하세요.",
     "noAccount": "계정이 없으신가요?",
     "createAccount": "계정 만들기"
   },

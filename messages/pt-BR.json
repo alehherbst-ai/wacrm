@@ -11,6 +11,9 @@
     "passwordPlaceholder": "Digite sua senha",
     "signingIn": "Entrando...",
     "signIn": "Entrar",
+    "sessionExpired": "Sua sessão expirou ou não pôde ser verificada. Entre novamente.",
+    "errorSessionNotStored": "Não foi possível salvar sua sessão neste navegador. Verifique se os cookies estão liberados para este site e tente de novo.",
+    "errorNetwork": "Não foi possível conectar. Verifique sua internet e tente de novo.",
     "noAccount": "Não tem uma conta?",
     "createAccount": "Criar conta"
   },

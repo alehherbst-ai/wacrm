@@ -11,6 +11,9 @@
     "passwordPlaceholder": "Enter your password",
     "signingIn": "Signing in...",
     "signIn": "Sign in",
+    "sessionExpired": "Your session expired or couldn't be verified. Please sign in again.",
+    "errorSessionNotStored": "We couldn't store your session in this browser. Check that cookies are allowed for this site and try again.",
+    "errorNetwork": "Couldn't reach the server. Check your connection and try again.",
     "noAccount": "Don't have an account?",
     "createAccount": "Create account"
   },

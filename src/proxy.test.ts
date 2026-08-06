@@ -8,7 +8,12 @@ import { NextRequest } from "next/server";
 //                      i.e. the freshly *rotated* auth token. The whole point
 //                      of the test is that these must survive onto whatever
 //                      response the middleware returns — including redirects.
+// `mockAuthError`    — what getUser() reports alongside a null user. Real
+//                      auth-js never returns a null user with no error;
+//                      WHICH error decides whether we're looking at a
+//                      signed-out visitor or at a failure to ask.
 let mockUser: { id: string } | null = null;
+let mockAuthError: { name: string; status?: number } | null = null;
 let refreshedCookies: Array<{
   name: string;
   value: string;
@@ -29,19 +34,20 @@ vi.mock("@supabase/ssr", () => ({
       // pushes the new cookies through setAll() before resolving.
       getUser: async () => {
         if (refreshedCookies.length) opts.cookies.setAll(refreshedCookies);
-        return { data: { user: mockUser } };
+        return { data: { user: mockUser }, error: mockAuthError };
       },
     },
   }),
 }));
 
 // Imported after the mock is registered.
-const { middleware } = await import("./middleware");
+const { proxy } = await import("./proxy");
 
 beforeEach(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
   mockUser = null;
+  mockAuthError = null;
   refreshedCookies = [];
 });
 
@@ -53,12 +59,12 @@ const ROTATED = {
   options: { path: "/", httpOnly: true },
 };
 
-describe("middleware — refreshed auth cookies survive redirects", () => {
+describe("proxy — refreshed auth cookies survive redirects", () => {
   it("carries the rotated token when redirecting a signed-in user off /login", async () => {
     mockUser = { id: "user-1" };
     refreshedCookies = [ROTATED];
 
-    const res = await middleware(
+    const res = await proxy(
       new NextRequest("https://app.test/login"),
     );
 
@@ -77,7 +83,7 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
     // clearing a dead session); those must not be dropped on the redirect.
     refreshedCookies = [{ ...ROTATED, value: "cleared" }];
 
-    const res = await middleware(
+    const res = await proxy(
       new NextRequest("https://app.test/dashboard"),
     );
 
@@ -90,7 +96,7 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
     mockUser = { id: "user-1" };
     refreshedCookies = [ROTATED];
 
-    const res = await middleware(
+    const res = await proxy(
       new NextRequest("https://app.test/login?invite=abc123"),
     );
 
@@ -102,12 +108,94 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
     mockUser = { id: "user-1" };
     refreshedCookies = [ROTATED];
 
-    const res = await middleware(
+    const res = await proxy(
       new NextRequest("https://app.test/dashboard"),
     );
 
     // No redirect — the normal NextResponse.next() already carries cookies.
     expect(res.headers.get("location")).toBeNull();
     expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
+  });
+});
+
+/** A request that arrives holding a session cookie, as a real one does. */
+function withSession(url: string): NextRequest {
+  const request = new NextRequest(url);
+  request.cookies.set("sb-test-auth-token", "some-session");
+  return request;
+}
+
+describe("proxy — a failure to verify is not a sign-out", () => {
+  it("lets the request through when the Auth server could not be reached", async () => {
+    mockUser = null;
+    // auth-js reports a failed fetch this way (status 0).
+    mockAuthError = { name: "AuthRetryableFetchError", status: 0 };
+
+    const res = await proxy(withSession("https://app.test/dashboard"));
+
+    // The reported bug: a blip here bounced the user to /login moments
+    // after they signed in with the right credentials.
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("lets the request through when the auth rate limiter answers 429", async () => {
+    mockUser = null;
+    mockAuthError = { name: "AuthApiError", status: 429 };
+
+    const res = await proxy(withSession("https://app.test/inbox"));
+
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("still redirects when the token is genuinely rejected", async () => {
+    mockUser = null;
+    mockAuthError = { name: "AuthApiError", status: 401 };
+
+    const res = await proxy(withSession("https://app.test/inbox"));
+
+    expect(res.headers.get("location")).toContain("/login");
+  });
+
+  it("still redirects when there is no session cookie at all", async () => {
+    mockUser = null;
+    mockAuthError = { name: "AuthRetryableFetchError", status: 0 };
+
+    // Nothing to verify — "not signed in" is a fact here, not a guess.
+    const res = await proxy(new NextRequest("https://app.test/inbox"));
+
+    expect(res.headers.get("location")).toContain("/login");
+  });
+
+  it("tells the login page where the user was headed", async () => {
+    mockUser = null;
+    mockAuthError = { name: "AuthSessionMissingError", status: 400 };
+
+    const res = await proxy(new NextRequest("https://app.test/inbox"));
+
+    expect(res.headers.get("location")).toContain("redirectedFrom=%2Finbox");
+  });
+});
+
+describe("proxy — routes that don't need a session", () => {
+  it("does not touch the provider webhooks", async () => {
+    // A 401 here would silently drop inbound WhatsApp messages.
+    mockUser = null;
+    const res = await proxy(
+      new NextRequest("https://app.test/api/whatsapp/uazapi/webhook/c1/s1"),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("does not touch the API-key authenticated public API", async () => {
+    mockUser = null;
+    const res = await proxy(new NextRequest("https://app.test/api/v1/messages"));
+    expect(res.status).toBe(200);
+  });
+
+  it("still guards the session-authenticated WhatsApp routes", async () => {
+    mockUser = null;
+    const res = await proxy(new NextRequest("https://app.test/api/whatsapp/send"));
+    expect(res.status).toBe(401);
   });
 });
