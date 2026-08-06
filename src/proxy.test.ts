@@ -176,6 +176,38 @@ describe("proxy — a failure to verify is not a sign-out", () => {
   });
 });
 
+describe("proxy — authenticated pages are never shared-cacheable", () => {
+  // The bug this guards: /dashboard is a STATIC route, so the public
+  // caching policy applied to it. One URL answers a browser with HTML
+  // and the App Router with the RSC flight payload, told apart only by
+  // a request header — a CDN that ignores Vary caches whichever came
+  // first. When the payload won, visitors got a page of raw
+  // `0:{"tree":…}` text and nothing threw for an error boundary.
+  const NO_STORE = /no-store/;
+
+  it("marks a signed-in page load private and unstored", async () => {
+    mockUser = { id: "user-1" };
+    const res = await proxy(new NextRequest("https://app.test/dashboard"));
+    expect(res.headers.get("cache-control")).toMatch(NO_STORE);
+    expect(res.headers.get("cache-control")).toMatch(/private/);
+  });
+
+  it("marks the redirect away from a protected page too", async () => {
+    mockUser = null;
+    const res = await proxy(new NextRequest("https://app.test/inbox"));
+    expect(res.headers.get("location")).toContain("/login");
+    // A cached redirect is its own outage: it would pin every visitor
+    // to /login until the entry expired.
+    expect(res.headers.get("cache-control")).toMatch(NO_STORE);
+  });
+
+  it("marks the login page, which redirects once signed in", async () => {
+    mockUser = { id: "user-1" };
+    const res = await proxy(new NextRequest("https://app.test/login"));
+    expect(res.headers.get("cache-control")).toMatch(NO_STORE);
+  });
+});
+
 describe("proxy — routes that don't need a session", () => {
   it("does not touch the provider webhooks", async () => {
     // A 401 here would silently drop inbound WhatsApp messages.

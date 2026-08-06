@@ -14,6 +14,27 @@ function hasAuthCookie(request: NextRequest): boolean {
     .some((cookie) => cookie.name.startsWith('sb-') && cookie.name.includes('auth-token'))
 }
 
+/**
+ * Forbid every shared cache from storing this response.
+ *
+ * Belt to next.config's braces. The header rules there carve the
+ * authenticated sections out of the public caching policy, but they
+ * are matched by pattern against a hand-maintained list; this runs for
+ * whatever `needsSession` says needs a session, so a route added to
+ * that helper is covered the moment it exists.
+ *
+ * The failure it prevents is not subtle: one URL serves both HTML and
+ * the RSC flight payload, told apart only by a request header. A CDN
+ * that ignores `Vary` caches whichever came first and hands it to
+ * everyone — and a browser that asked for a page and received the
+ * flight payload renders it as raw text, with no HTML and nothing
+ * thrown for an error boundary to catch.
+ */
+function denySharedCache<T extends NextResponse>(response: T): T {
+  response.headers.set('Cache-Control', 'private, no-store, must-revalidate')
+  return response
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -61,7 +82,7 @@ export async function proxy(request: NextRequest) {
     supabaseResponse.cookies.getAll().forEach((cookie) => {
       response.cookies.set(cookie)
     })
-    return response
+    return denySharedCache(response)
   }
 
   let user = null
@@ -137,7 +158,7 @@ export async function proxy(request: NextRequest) {
     )
   }
 
-  return supabaseResponse
+  return denySharedCache(supabaseResponse)
 }
 
 export const config = {
