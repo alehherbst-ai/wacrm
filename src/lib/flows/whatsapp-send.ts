@@ -4,7 +4,7 @@ import type {
   InteractiveListSection,
   InteractiveMessagePayload,
 } from '@/lib/whatsapp/interactive'
-import { resolveConnection } from '@/lib/whatsapp/uazapi-client'
+import { resolveConnectionForConversation } from '@/lib/whatsapp/uazapi-client'
 import {
   resolveSendTarget,
   isRecipientNotAllowedError,
@@ -78,7 +78,11 @@ export async function engineSendText(
   }
   const sanitized = sendTargets[0]
 
-  const { send } = await resolveConnection(db, args.accountId)
+  const { send } = await resolveConnectionForConversation(
+    db,
+    args.accountId,
+    args.conversationId
+  )
 
   const attempt = async (phone: string): Promise<string> => {
     const r = await send.sendText({ to: phone, text: args.text })
@@ -175,7 +179,11 @@ export async function engineSendMedia(
   }
   const sanitized = sendTargets[0]
 
-  const { send } = await resolveConnection(db, args.accountId)
+  const { send } = await resolveConnectionForConversation(
+    db,
+    args.accountId,
+    args.conversationId
+  )
 
   const attempt = async (phone: string): Promise<string> => {
     const r = await send.sendMedia({
@@ -317,7 +325,11 @@ async function sendInteractiveMenu(
   }
   const sanitized = sendTargets[0]
 
-  const { send } = await resolveConnection(db, input.accountId)
+  const { send } = await resolveConnectionForConversation(
+    db,
+    input.accountId,
+    input.conversationId
+  )
 
   const attempt = async (phone: string): Promise<string> => {
     const payload: InteractiveMessagePayload =

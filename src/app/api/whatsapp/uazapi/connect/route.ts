@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
+import {
+  findTargetConnection,
+  parseConnectionScope,
+} from '@/lib/whatsapp/connection-target';
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption';
 import {
   createInstance,
@@ -54,13 +58,31 @@ function resolveWebhookOrigin(request: Request): { origin: string; suspicious: b
  * NEXT_PUBLIC_SITE_URL and clicking "Connect" again actually repair a
  * previously-mis-wired connection without a full disconnect/recreate.
  *
- * Admin-only — matches the `whatsapp_config_insert`/`update` RLS
- * policies, and instance creation has a real side effect against the
- * UAZAPI account's instance quota.
+ * Body: `{ scope?: 'account' | 'mine' }`, default `'account'`.
+ *   - `account` — the house number, the single connection an account
+ *     had before operators existed. Admin-only, unchanged behaviour.
+ *   - `mine` — the caller's own line (migration 044). Agent+, and the
+ *     row is stamped with `operator_user_id = caller`, which is what
+ *     the RLS policy checks and what scopes their inbox.
+ *
+ * The default is deliberately the old behaviour: creating a connection
+ * spins up a new UAZAPI instance, which consumes the account's instance
+ * quota and may be billed. Nobody should discover a second instance
+ * because a button changed meaning underneath them — claiming a
+ * personal line has to be an explicit ask.
  */
 export async function POST(request: Request) {
   try {
-    const { supabase, accountId, userId, account } = await requireRole('admin');
+    const body = await request.json().catch(() => ({}));
+    const scope = parseConnectionScope((body as { scope?: unknown })?.scope);
+
+    // An operator pairing their own phone needs no admin rights — they
+    // are the only one who can scan that QR code, and requiring an
+    // admin present would make the gestor a bottleneck on a task only
+    // the phone's owner can finish.
+    const { supabase, accountId, userId, account } = await requireRole(
+      scope === 'mine' ? 'agent' : 'admin'
+    );
 
     const adminToken = process.env.UAZAPI_ADMIN_TOKEN;
     if (!adminToken) {
@@ -73,20 +95,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: existing, error: existingError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .eq('provider', 'uazapi')
-      .maybeSingle();
-
-    if (existingError) {
-      console.error('[uazapi/connect] failed to load existing config:', existingError);
-      return NextResponse.json(
-        { error: 'Failed to load UAZAPI connection' },
-        { status: 500 }
-      );
-    }
+    // Resumes the QR handshake on an existing row when there is one —
+    // reconnecting must never mint a second instance for the same line.
+    const existing = await findTargetConnection(supabase, accountId, {
+      scope,
+      userId,
+    });
 
     let configRow = existing;
     let instanceToken: string;
@@ -97,7 +111,13 @@ export async function POST(request: Request) {
       try {
         instance = await createInstance({
           adminToken,
-          name: `${account.name}-${accountId.slice(0, 8)}`,
+          // The operator's id rides in the name so two lines on one
+          // account are tellable apart in UAZAPI's own dashboard —
+          // otherwise every instance there reads as the same hotel.
+          name:
+            scope === 'mine'
+              ? `${account.name}-${accountId.slice(0, 8)}-op-${userId.slice(0, 8)}`
+              : `${account.name}-${accountId.slice(0, 8)}`,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown UAZAPI error';
@@ -114,6 +134,10 @@ export async function POST(request: Request) {
         .insert({
           account_id: accountId,
           user_id: userId,
+          // NULL for the house number, the caller for a personal line.
+          // This single column is what decides whose inbox the messages
+          // arriving here will land in.
+          operator_user_id: scope === 'mine' ? userId : null,
           provider: 'uazapi',
           status: 'disconnected',
           uazapi_instance_id: instance.id,

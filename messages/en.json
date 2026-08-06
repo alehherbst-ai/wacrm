@@ -1157,7 +1157,12 @@
       "removeDialogDesc": "Remove <bold>{name}</bold> from the account? They'll be signed out of this account and given a fresh personal account on their next sign-in. Their login isn't deleted.",
       "cancel": "Cancel",
       "removing": "Removing...",
-      "removeBtn": "Remove member"
+      "removeBtn": "Remove member",
+      "scopeLabel": "Which conversations this person sees",
+      "scopeAll": "All conversations",
+      "scopeOwn": "Their number only",
+      "scopeUpdatedToast": "{name} now sees: {scope}",
+      "scopeError": "Could not change what this person sees."
     },
     "invite": {
       "inviteCreated": "Invite created",
@@ -1446,7 +1451,9 @@
       "limitationsTitle": "Limitations",
       "limitationsDesc": "This connection doesn't support approved message templates or interactive button/list messages — those need the Meta connection.",
       "connectError": "Could not start the connection. Try again.",
-      "statusError": "Could not check connection status."
+      "statusError": "Could not check connection status.",
+      "mineTitle": "My WhatsApp number",
+      "mineDescription": "Pair your own number by scanning the QR code with your phone. Conversations arriving on it appear in your inbox only, and your replies go out from it."
     }
   }
 }

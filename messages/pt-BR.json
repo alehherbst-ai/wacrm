@@ -1157,7 +1157,12 @@
       "removeDialogDesc": "Remover <bold>{name}</bold> da conta? A pessoa será desconectada desta conta e receberá uma nova conta pessoal no próximo login. O login dela não é excluído.",
       "cancel": "Cancelar",
       "removing": "Removendo...",
-      "removeBtn": "Remover membro"
+      "removeBtn": "Remover membro",
+      "scopeLabel": "O que esta pessoa enxerga na caixa de entrada",
+      "scopeAll": "Todas as conversas",
+      "scopeOwn": "Só o número dela",
+      "scopeUpdatedToast": "{name} agora enxerga: {scope}",
+      "scopeError": "Não foi possível alterar o que essa pessoa enxerga."
     },
     "invite": {
       "inviteCreated": "Convite criado",
@@ -1446,7 +1451,9 @@
       "limitationsTitle": "Limitações",
       "limitationsDesc": "Esta conexão não suporta modelos de mensagem aprovados nem mensagens interativas de botão/lista — esses recursos exigem a conexão Meta.",
       "connectError": "Não foi possível iniciar a conexão. Tente novamente.",
-      "statusError": "Não foi possível verificar o status da conexão."
+      "statusError": "Não foi possível verificar o status da conexão.",
+      "mineTitle": "Meu número de WhatsApp",
+      "mineDescription": "Conecte o seu próprio número escaneando o QR Code pelo celular. As conversas que chegarem nele aparecem só na sua caixa de entrada, e as suas respostas saem por ele."
     }
   }
 }

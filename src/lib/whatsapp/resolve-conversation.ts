@@ -55,11 +55,19 @@ export async function resolveConversationByPhone(
 
   // Fail fast (and create nothing) when the account has no WhatsApp
   // connected — the same error the send would raise anyway.
-  const { data: config } = await db
+  const { data: configRows } = await db
     .from('whatsapp_config')
     .select('id')
     .eq('account_id', accountId)
-    .maybeSingle();
+    // House number first, then oldest — the same rule
+    // `resolveConnection` uses. `.maybeSingle()` was here, and it
+    // ERRORS on more than one row: since migration 044 an account may
+    // hold one connection per operator, which would have turned this
+    // into a hard failure the day a second number was paired.
+    .order('operator_user_id', { ascending: true, nullsFirst: true })
+    .order('created_at', { ascending: true })
+    .limit(1);
+  const config = configRows?.[0];
   if (!config) {
     throw new SendMessageError(
       'whatsapp_not_configured',

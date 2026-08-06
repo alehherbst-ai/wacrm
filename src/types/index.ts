@@ -74,8 +74,18 @@ export interface AccountMember {
   email: string | null;
   avatar_url: string | null;
   role: AccountRole;
+  /**
+   * Which conversations this member sees. Orthogonal to `role`:
+   * role is what they may DO, this is what they may SEE. 'own'
+   * restricts the inbox to conversations arriving on their own
+   * WhatsApp number (migration 044).
+   */
+  inbox_scope: InboxScope;
   joined_at: string;
 }
+
+/** @see AccountMember.inbox_scope */
+export type InboxScope = 'all' | 'own';
 
 /**
  * Outstanding invite link row. `token_hash` is intentionally

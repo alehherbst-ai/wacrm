@@ -193,12 +193,11 @@ function InboxPageInner() {
 
       if (!user) return;
 
-      // whatsapp_config is one-row-per-account post-multi-user, so
-      // the previous `.eq('user_id', user.id)` would miss the row
-      // for any teammate who didn't personally save the config —
-      // the "WhatsApp not connected" banner would show in the
-      // shared inbox even though the admin had it configured.
-      // Resolve account_id via the profile and query by that.
+      // Query by account, never by `user_id`: that column records who
+      // SAVED the connection, so filtering on it hid the banner's true
+      // state from every teammate who didn't personally set it up.
+      // (Whose number a connection IS lives in `operator_user_id`
+      // since migration 044 — a different question, handled below.)
       const { data: profile } = await supabase
         .from("profiles")
         .select("account_id")
@@ -210,13 +209,26 @@ function InboxPageInner() {
         return;
       }
 
+      // Every connection on the account, not one row: since migration
+      // 044 there may be one per operator, and `.maybeSingle()` — what
+      // stood here — errors outright on more than one.
       const { data } = await supabase
         .from("whatsapp_config")
-        .select("status")
-        .eq("account_id", accountId)
-        .maybeSingle();
+        .select("status, operator_user_id")
+        .eq("account_id", accountId);
 
-      setWhatsappConnected(data?.status === "connected");
+      const rows = data ?? [];
+      // An operator's own line is what decides the banner for them: if
+      // their number is down, "WhatsApp connected" is a lie no matter
+      // how healthy the house number is. Whoever has no line of their
+      // own falls back to "is anything receiving at all", which is the
+      // question a gestor is actually asking.
+      const mine = rows.find((row) => row.operator_user_id === user.id);
+      setWhatsappConnected(
+        mine
+          ? mine.status === "connected"
+          : rows.some((row) => row.status === "connected"),
+      );
     };
 
     checkConnection();

@@ -12,7 +12,9 @@ import { SendMessageError } from './send-message';
 type ContactRow = { id: string; phone: string; name?: string | null };
 
 interface Script {
-  config?: { user_id: string } | null; // whatsapp_config.maybeSingle
+  /** The account's connection, or null for "nothing connected".
+   *  Read via `.order().limit(1)`, house number first. */
+  config?: { user_id: string } | null;
   contactCandidates?: ContactRow[]; // contacts .like (same every call)
   /** Per-call `.like` results — overrides contactCandidates. Lets a
    *  test simulate "miss, then hit" for the unique-race path. */
@@ -48,7 +50,15 @@ function makeDb(script: Script): SupabaseClient {
     eq: () => builder,
     order: () => builder,
     limit: () => {
-      // Only the conversation lookup terminates on `.limit(1)`.
+      // The connection lookup terminates on `.limit(1)` too since
+      // migration 044 — an account may hold one number per operator,
+      // so `.maybeSingle()` (which errors on ≥2 rows) had to go.
+      if (table === 'whatsapp_config' && mode === 'select') {
+        return Promise.resolve({
+          data: script.config ? [script.config] : [],
+          error: null,
+        });
+      }
       if (table === 'conversations' && mode === 'select') {
         const row = script.existingConversationByCall
           ? (script.existingConversationByCall[convLookupCalls] ?? null)

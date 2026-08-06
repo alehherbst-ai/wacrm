@@ -1157,7 +1157,12 @@
       "removeDialogDesc": "<bold>{name}</bold>을(를) 이 계정에서 제거하시겠습니까? 이 계정에서 로그아웃되며 다음 로그인 시 새로운 개인 계정이 발급됩니다. 로그인 정보 자체는 삭제되지 않습니다.",
       "cancel": "취소",
       "removing": "제거 중...",
-      "removeBtn": "멤버 제거"
+      "removeBtn": "멤버 제거",
+      "scopeLabel": "이 사용자가 받은편지함에서 볼 수 있는 대화",
+      "scopeAll": "모든 대화",
+      "scopeOwn": "본인 번호만",
+      "scopeUpdatedToast": "{name} 님의 표시 범위: {scope}",
+      "scopeError": "표시 범위를 변경할 수 없습니다."
     },
     "invite": {
       "inviteCreated": "초대가 생성되었습니다",
@@ -1446,7 +1451,9 @@
       "limitationsTitle": "제한 사항",
       "limitationsDesc": "이 연결은 승인된 메시지 템플릿이나 인터랙티브 버튼/목록 메시지를 지원하지 않습니다 — 해당 기능은 Meta 연결이 필요합니다.",
       "connectError": "연결을 시작할 수 없습니다. 다시 시도하세요.",
-      "statusError": "연결 상태를 확인할 수 없습니다."
+      "statusError": "연결 상태를 확인할 수 없습니다.",
+      "mineTitle": "내 WhatsApp 번호",
+      "mineDescription": "휴대폰으로 QR 코드를 스캔해 본인 번호를 연결하세요. 이 번호로 오는 대화는 내 받은편지함에만 표시되고, 내 답장도 이 번호로 나갑니다."
     }
   }
 }

@@ -6,6 +6,48 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-06] Operadores, Etapa 1 — um número por pessoa e caixa separada
+
+> **Requer migration.** `supabase/migrations/044_operators_multi_number.sql`.
+> O cabeçalho dela traz o SQL de reversão completo e diz em que ponto a
+> reversão deixa de ser possível (quando o segundo número for conectado).
+> **Branch `feat/operadores-multi-numero`, não está na `main`.**
+> Ponto de retorno: tag `marco/numero-unico-caixa-compartilhada`.
+
+**Antes:** uma conta tinha exatamente um número de WhatsApp (`whatsapp_config` com `UNIQUE(account_id)`) e todos os membros dividiam uma caixa de entrada. A conversa era identificada por (conta, contato), então o mesmo cliente sempre caía na mesma thread, viesse de qual número viesse — e como só havia um, isso nunca apareceu.
+
+**Depois:**
+- **Um número por operador.** `whatsapp_config.operator_user_id` diz de quem é a linha; NULL é o "número da casa", que é o que a conexão existente vira ao aplicar a migration. Dois índices parciais garantem um número por operador e no máximo um da casa.
+- **Escopo de caixa.** `profiles.inbox_scope` ('all' | 'own'), ortogonal ao cargo: cargo é o que a pessoa *pode fazer*, escopo é o que ela *pode ver*. Um gerente que atende é admin + own.
+- **A chave da conversa** passou de (conta, contato) para (conta, contato, número), com backfill antes da troca do índice. É o que permite duas conversas com o mesmo cliente.
+- **`can_access_conversation()`** substitui `is_account_member()` nas policies de conversas, mensagens e reações. Com escopo 'all' ela devolve exatamente o que devolvia antes — por isso aplicar a migration não muda nada até alguém ser colocado em 'own'.
+- **O envio pergunta pela conversa, não pela conta.** `resolveConnectionForConversation` substitui `resolveConnection` no composer, nas reações, nos fluxos, nas automações e na IA (que passa pelo motor de fluxos). Uma resposta que saísse pelo número errado chegaria ao cliente como mensagem de um desconhecido, num chat que ele nunca abriu.
+- **Operador conecta o próprio número.** As rotas connect/status/disconnect aceitam `scope: 'account' | 'mine'`; o default continua sendo o número da casa, admin-only, porque criar conexão gasta cota de instância na UAZAPI e ninguém deve descobrir uma segunda instância por um botão ter mudado de sentido.
+- **Tela de Membros** ganhou o seletor de escopo, alimentado pelo RPC `set_member_inbox_scope`.
+
+**Três coisas que quase passaram batido e estão corrigidas:**
+1. **`inbox_scope` é coluna de privilégio.** Sem entrar no gatilho da migration 034, qualquer operador faria `UPDATE profiles SET inbox_scope='all'` direto do navegador e voltaria a ver tudo. A migration estende o gatilho.
+2. **Seis consultas usavam `.maybeSingle()` em `whatsapp_config` filtrando só por conta** — e `.maybeSingle()` *erra* com mais de uma linha. Todas quebrariam no dia do segundo número: connect, status, disconnect, o banner da caixa de entrada, a visão geral de Configurações, o resolvedor de conversa da API pública e o resolvedor de autor de contatos.
+3. **"Limpar caixa"** faz um UPDATE em massa sem filtro de dono, apoiado só na RLS. Com a policy de UPDATE escopada, um operador passa a arquivar apenas as próprias conversas — sem isso ele limparia a caixa dos colegas.
+
+**Bug pré-existente corrigido de passagem:** `uazapi-connect.tsx` pedia o namespace de tradução `Settings.whatsapp.uazapi`, que não existe — as chaves vivem em `Settings.whatsapp`. Todos os rótulos daquele cartão resolviam para mensagem ausente.
+
+**Resolvido:** primeira etapa do modelo de operadores desenhado com o usuário. Ainda **não** inclui transferência de conversa, histórico herdado nem o estado de observador — isso é a Etapa 2.
+
+**Não verificado:** o SQL não foi executado (não há Postgres, CLI do Supabase nem Docker nesta máquina). Typecheck limpo, build limpo, 577 testes passando — as 5 falhas de fuso/ICU seguem pré-existentes.
+
+Arquivos: `supabase/migrations/044_operators_multi_number.sql` (novo),
+`src/lib/whatsapp/uazapi-client.ts`, `src/lib/whatsapp/uazapi-client.test.ts` (novo),
+`src/lib/whatsapp/connection-target.ts` (novo), `src/lib/whatsapp/send-message.ts`,
+`src/lib/whatsapp/resolve-conversation.ts`, `src/lib/flows/whatsapp-send.ts`,
+`src/lib/automations/whatsapp-send.ts`, `src/lib/api/v1/contacts.ts`,
+`src/app/api/whatsapp/uazapi/{connect,status,disconnect}/route.ts`,
+`src/app/api/whatsapp/react/route.ts`, `src/app/api/account/members/route.ts`,
+`src/app/api/account/members/[userId]/route.ts`, `src/app/(dashboard)/inbox/page.tsx`,
+`src/app/(dashboard)/settings/page.tsx`, `src/components/settings/whatsapp-panel.tsx` (novo),
+`src/components/settings/uazapi-connect.tsx`, `src/components/settings/members-tab.tsx`,
+`src/components/settings/settings-overview.tsx`, `src/types/index.ts`, `messages/*.json`
+
 ## [2026-08-06] Convite recusado porque o convidado abriu a tela de Funis
 
 > **Requer migration.** `supabase/migrations/043_invite_ignores_empty_pipeline.sql`.
