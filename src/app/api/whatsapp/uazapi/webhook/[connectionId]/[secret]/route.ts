@@ -9,6 +9,7 @@ import {
   getProfilePictureUrl,
 } from '@/lib/whatsapp/uazapi-api';
 import { persistInboundMedia } from '@/lib/whatsapp/inbound-media';
+import { classifyDelivery } from '@/lib/whatsapp/delivery-direction';
 import {
   processInboundMessage,
   type NormalizedInboundMessage,
@@ -216,6 +217,7 @@ function toNormalizedMessage(msg: UazapiMessage): NormalizedInboundMessage | nul
       reaction: { targetProviderId: msg.reaction, emoji: msg.text || '' },
       isGroup,
       senderDisplayName,
+      fromMe: msg.fromMe === true,
     };
   }
 
@@ -241,6 +243,7 @@ function toNormalizedMessage(msg: UazapiMessage): NormalizedInboundMessage | nul
     reaction: null,
     isGroup,
     senderDisplayName,
+    fromMe: msg.fromMe === true,
   };
 }
 
@@ -306,9 +309,10 @@ export async function POST(
   after(async () => {
     for (const msg of messages) {
       try {
-        // Our own outbound sends land back here as `fromMe`/`wasSentByApi`
-        // — skip them, we already persisted them in send-message.ts.
-        if (msg.fromMe || msg.wasSentByApi) continue;
+        // Our own API sends echo back here — skip them, send-message.ts
+        // already persisted them. `fromMe` on its own is NOT a reason to
+        // skip; see `classifyDelivery` for the full rule and why.
+        if (classifyDelivery(msg) === 'skip') continue;
 
         const normalized = toNormalizedMessage(msg);
         if (!normalized) {

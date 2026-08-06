@@ -269,12 +269,22 @@ export function ConversationList({
     }
 
     if (search.trim()) {
-      const q = search.toLowerCase();
+      const q = search.trim().toLowerCase();
+      // Same digits-only fallback the contact suggestions use, so a
+      // number typed with spaces or a leading "+" still matches.
+      const qDigits = q.replace(/\D/g, "");
       result = result.filter((c) => {
         const name = c.contact?.name?.toLowerCase() ?? "";
-        const phone = c.contact?.phone?.toLowerCase() ?? "";
+        const phone = c.contact?.phone ?? "";
+        const company = c.contact?.company?.toLowerCase() ?? "";
         const lastMsg = c.last_message_text?.toLowerCase() ?? "";
-        return name.includes(q) || phone.includes(q) || lastMsg.includes(q);
+        return (
+          name.includes(q) ||
+          company.includes(q) ||
+          phone.toLowerCase().includes(q) ||
+          lastMsg.includes(q) ||
+          (qDigits.length > 0 && phone.replace(/\D/g, "").includes(qDigits))
+        );
       });
     }
 
@@ -323,7 +333,15 @@ export function ConversationList({
    */
   const contactSuggestions = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (q.length < 2) return [];
+    // One character is enough. Waiting for two meant the first keystroke
+    // produced "no conversations found" and nothing else, which reads as
+    // an empty CRM at exactly the moment the user is looking for proof
+    // it isn't.
+    if (q.length < 1) return [];
+
+    // Typed punctuation must not stop a number matching: "48 9912"
+    // should find a contact stored as "5548991234567".
+    const qDigits = q.replace(/\D/g, "");
 
     const withConversation = new Set(
       conversations.map((c) => c.contact_id).filter(Boolean),
@@ -336,12 +354,14 @@ export function ConversationList({
         // group you were never added to.
         if (c.is_group) return false;
         if (audience === "groups") return false;
+        const phone = c.phone ?? "";
         return (
           (c.name ?? "").toLowerCase().includes(q) ||
-          (c.phone ?? "").toLowerCase().includes(q)
+          phone.toLowerCase().includes(q) ||
+          (qDigits.length > 0 && phone.replace(/\D/g, "").includes(qDigits))
         );
       })
-      .slice(0, 5);
+      .slice(0, 8);
   }, [search, conversations, allContacts, audience]);
 
   const handlePickContact = useCallback(

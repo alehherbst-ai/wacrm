@@ -59,6 +59,24 @@ export interface NormalizedInboundMessage {
   isGroup: boolean;
   /** Which group participant sent this message. Null outside groups. */
   senderDisplayName: string | null;
+  /**
+   * True when WE sent this message — from the WhatsApp app on the phone,
+   * from WhatsApp Web, or from any other device sharing the connected
+   * number. The counterparty is still `senderPhone` (identity always
+   * comes from `chatid`, never from who typed), so contact and
+   * conversation resolve exactly as they do for an inbound message; only
+   * the direction differs.
+   *
+   * These used to be dropped at the webhook door alongside our own API
+   * sends, which is why a thread answered from the phone showed the
+   * customer's half of the conversation and none of ours. They are now
+   * recorded as `sender_type='agent'` so the CRM holds the whole
+   * exchange regardless of which device it was typed on.
+   *
+   * Our OWN API sends are a different case and stay excluded upstream
+   * (`wasSentByApi`) — `send-message.ts` already persisted those.
+   */
+  fromMe: boolean;
 }
 
 export interface InboundPipelineContext {
@@ -114,7 +132,12 @@ export async function processInboundMessage(
     accountId,
     configOwnerUserId,
     message.senderPhone,
-    message.senderName,
+    // A message WE sent carries OUR push name, not the counterparty's —
+    // feeding it in would rename the contact to the account's own name
+    // (and, for a brand-new contact, file them under it). The empty
+    // string means "no name information here": the existing name is
+    // left alone and a new contact falls back to the phone number.
+    message.fromMe ? '' : message.senderName,
     message.isGroup,
     resolveGroupName
   );
@@ -163,7 +186,23 @@ export async function processInboundMessage(
   }
 
   if (message.reaction) {
-    await handleReaction(message.reaction, conversation.id, contactRecord.id);
+    await handleReaction(
+      message.reaction,
+      conversation.id,
+      message.fromMe ? configOwnerUserId : contactRecord.id,
+      message.fromMe ? 'agent' : 'customer'
+    );
+    return;
+  }
+
+  // One provider message must never become two rows. Deliveries repeat
+  // for reasons outside our control — UAZAPI retries anything that
+  // didn't 200 in time, and a connection configured before
+  // `excludeMessages: ['wasSentByApi']` existed still echoes our own
+  // sends back as ordinary `fromMe` traffic. Both used to be invisible
+  // because every `fromMe` message was discarded; now that they're
+  // recorded, the id check is what keeps the thread honest.
+  if (await messageAlreadyStored(message.providerMessageId, conversation.id)) {
     return;
   }
 
@@ -184,6 +223,23 @@ export async function processInboundMessage(
   const contentType = ALLOWED_CONTENT_TYPES.has(message.contentType)
     ? message.contentType
     : 'text';
+
+  // Something we sent from the phone / WhatsApp Web. Record it and stop:
+  // everything below this point answers "how should we react to what the
+  // customer just said", and none of it applies to our own words. Firing
+  // flows, automations or the AI auto-reply here would have the CRM
+  // replying to itself.
+  if (message.fromMe) {
+    await recordOwnDeviceMessage({
+      accountId,
+      conversation,
+      contactId: contactRecord.id,
+      contentType,
+      message,
+      replyToInternalId,
+    });
+    return;
+  }
 
   const { count: priorCustomerMsgCount } = await supabaseAdmin()
     .from('messages')
@@ -313,6 +369,120 @@ export async function processInboundMessage(
 }
 
 /**
+ * Persist a message the account sent from outside the CRM — the
+ * WhatsApp app on the phone, WhatsApp Web, a second linked device.
+ *
+ * Stored as `sender_type='agent'` so it renders as ours and reads
+ * identically to a message sent from the composer here. Deliberately
+ * NOT `bot`: a human wrote it, just not in this window.
+ *
+ * Two things differ from the inbound path, both because the account is
+ * the author:
+ *   - `unread_count` is cleared rather than bumped. Answering from the
+ *     phone IS reading the thread; leaving the badge up would have the
+ *     inbox nagging about conversations that were already handled.
+ *   - any active Flow run for the contact is paused, the same signal
+ *     `send-message.ts` sends when an agent replies from the CRM. A
+ *     human stepping in mid-automation means the automation should
+ *     yield, and the device it was typed on doesn't change that.
+ */
+async function recordOwnDeviceMessage(args: {
+  accountId: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  conversation: any;
+  contactId: string;
+  contentType: string;
+  message: NormalizedInboundMessage;
+  replyToInternalId: string | null;
+}): Promise<void> {
+  const { accountId, conversation, contactId, contentType, message, replyToInternalId } =
+    args;
+
+  const { error: msgError } = await supabaseAdmin().from('messages').insert({
+    conversation_id: conversation.id,
+    sender_type: 'agent',
+    content_type: contentType,
+    content_text: message.contentText,
+    media_url: message.mediaUrl,
+    message_id: message.providerMessageId,
+    // The provider only tells us the message exists; delivery/read
+    // receipts for it arrive (if at all) as separate status events.
+    status: 'sent',
+    created_at: message.timestamp.toISOString(),
+    reply_to_message_id: replyToInternalId,
+  });
+
+  if (msgError) {
+    console.error('[inbound-pipeline] error inserting own-device message:', msgError);
+    return;
+  }
+
+  const { error: convError } = await supabaseAdmin()
+    .from('conversations')
+    .update({
+      last_message_text: message.contentText || `[${message.contentType}]`,
+      last_message_at: new Date().toISOString(),
+      unread_count: 0,
+      updated_at: new Date().toISOString(),
+      // Answering an archived thread brings it back into the inbox, the
+      // same as sending from the composer does (migration 040).
+      archived_at: null,
+    })
+    .eq('id', conversation.id);
+
+  if (convError) {
+    console.error(
+      '[inbound-pipeline] error updating conversation after own-device message:',
+      convError
+    );
+  }
+
+  const { error: pauseError } = await supabaseAdmin()
+    .from('flow_runs')
+    .update({
+      status: 'paused_by_agent',
+      ended_at: new Date().toISOString(),
+      end_reason: 'agent_replied',
+    })
+    .eq('account_id', accountId)
+    .eq('contact_id', contactId)
+    .eq('status', 'active');
+
+  if (pauseError) {
+    console.error(
+      '[inbound-pipeline] pause-on-own-device-send failed:',
+      pauseError.message
+    );
+  }
+}
+
+/**
+ * Has this provider message already been stored in this conversation?
+ *
+ * Backed by `idx_messages_message_id` (migration 001). On a read error
+ * the answer is "no": dropping a real message to avoid a hypothetical
+ * duplicate is the worse trade — a missing message is invisible, a
+ * duplicate is merely ugly.
+ */
+async function messageAlreadyStored(
+  providerMessageId: string,
+  conversationId: string
+): Promise<boolean> {
+  const { data, error } = await supabaseAdmin()
+    .from('messages')
+    .select('id')
+    .eq('message_id', providerMessageId)
+    .eq('conversation_id', conversationId)
+    .limit(1);
+
+  if (error) {
+    console.error('[inbound-pipeline] duplicate check failed:', error.message);
+    return false;
+  }
+  return (data?.length ?? 0) > 0;
+}
+
+/**
  * If an inbound message's sender is on a still-unreplied
  * broadcast_recipients row, flip it to `replied` so the reply count
  * advances on the parent broadcast. Best-effort.
@@ -367,14 +537,23 @@ async function lookupInternalIdByProviderId(
 }
 
 /**
- * Persist an inbound reaction. Reactions are not new messages — they're
- * per-(target, actor) state, upserted/deleted on `message_reactions`.
- * A missing parent is logged and skipped, not fatal.
+ * Persist a reaction seen on the wire. Reactions are not new messages —
+ * they're per-(target, actor) state, upserted/deleted on
+ * `message_reactions`. A missing parent is logged and skipped, not fatal.
+ *
+ * `actorType` distinguishes the customer reacting from US reacting on
+ * the phone; `actorId` is the contact in the first case and the
+ * connection's owning user in the second, matching what the inbox
+ * writes when someone reacts from the CRM (actor_type='agent',
+ * actor_id=<user id>). The unique key is (message, actor_type,
+ * actor_id), so the two can coexist on one message — which is exactly
+ * what a 👍 from each side is.
  */
 async function handleReaction(
   reaction: { targetProviderId: string; emoji: string },
   conversationId: string,
-  contactId: string
+  actorId: string,
+  actorType: 'customer' | 'agent'
 ) {
   const targetInternalId = await lookupInternalIdByProviderId(
     reaction.targetProviderId,
@@ -393,8 +572,8 @@ async function handleReaction(
       .from('message_reactions')
       .delete()
       .eq('message_id', targetInternalId)
-      .eq('actor_type', 'customer')
-      .eq('actor_id', contactId);
+      .eq('actor_type', actorType)
+      .eq('actor_id', actorId);
     if (delError) {
       console.error('[inbound-pipeline] reaction delete failed:', delError.message);
     }
@@ -407,8 +586,8 @@ async function handleReaction(
       {
         message_id: targetInternalId,
         conversation_id: conversationId,
-        actor_type: 'customer',
-        actor_id: contactId,
+        actor_type: actorType,
+        actor_id: actorId,
         emoji: reaction.emoji,
       },
       { onConflict: 'message_id,actor_type,actor_id' }

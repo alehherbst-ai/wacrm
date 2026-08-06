@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search, MessageSquarePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import type { Contact } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -64,10 +66,20 @@ interface NewConversationDialogProps {
 }
 
 /**
- * Reach out to someone who has never written in.
+ * Which half of the dialog is showing. Saved contacts lead because
+ * that's the common case — most people you want to reach are already
+ * in the CRM, and re-typing a number you already stored is both slower
+ * and how duplicate contacts get created.
+ */
+type StartMode = "contacts" | "number";
+
+/**
+ * Reach out to someone who has never written in — by picking a saved
+ * contact, or by typing a number for someone who isn't saved yet.
  *
- * The number is validated against WhatsApp server-side before anything
- * is written, so a typo produces an inline error here rather than a
+ * Either way the number is validated against WhatsApp server-side
+ * before anything is written, so a typo (or a saved contact whose
+ * number is stale) produces an inline error here rather than a
  * permanent contact and a dead thread in the inbox.
  */
 export function NewConversationDialog({
@@ -76,16 +88,75 @@ export function NewConversationDialog({
   onStarted,
 }: NewConversationDialogProps) {
   const t = useTranslations("Inbox.newConversation");
+  const [mode, setMode] = useState<StartMode>("contacts");
   const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactSearch, setContactSearch] = useState("");
+  /** Which contact's thread is being opened, for the row spinner. */
+  const [pendingContactId, setPendingContactId] = useState<string | null>(null);
+
   const described = describePhoneInput(phone);
+
+  // Load saved contacts when the dialog opens. Fetching on open rather
+  // than on mount keeps the inbox from paying for a list nobody asked
+  // for, and picks up contacts created since the page loaded.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      setContactsLoading(true);
+      const { data, error: fetchError } = await createClient()
+        .from("contacts")
+        .select("id, name, phone, avatar_url, is_group, company")
+        // Groups are excluded: a WhatsApp group can't be opened from
+        // the outside, only joined. Offering them here would produce a
+        // row that always fails.
+        .or("is_group.is.null,is_group.eq.false")
+        .order("name")
+        .limit(500);
+      if (cancelled) return;
+      if (fetchError) {
+        console.error("[new-conversation] contact fetch failed:", fetchError.message);
+      } else {
+        setContacts((data ?? []) as Contact[]);
+      }
+      setContactsLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const filteredContacts = useMemo(() => {
+    const q = contactSearch.trim().toLowerCase();
+    if (!q) return contacts;
+    // Digits-only comparison too, so searching "48 99123" finds a
+    // contact stored as "5548991234567".
+    const qDigits = q.replace(/\D/g, "");
+    return contacts.filter((c) => {
+      const name = (c.name ?? "").toLowerCase();
+      const phoneValue = c.phone ?? "";
+      const company = (c.company ?? "").toLowerCase();
+      return (
+        name.includes(q) ||
+        company.includes(q) ||
+        phoneValue.toLowerCase().includes(q) ||
+        (qDigits.length > 0 && phoneValue.replace(/\D/g, "").includes(qDigits))
+      );
+    });
+  }, [contacts, contactSearch]);
 
   const reset = useCallback(() => {
     setPhone("");
     setError(null);
     setSubmitting(false);
+    setContactSearch("");
+    setPendingContactId(null);
+    setMode("contacts");
   }, []);
 
   const handleOpenChange = useCallback(
@@ -99,53 +170,80 @@ export function NewConversationDialog({
     [onOpenChange, reset],
   );
 
+  /**
+   * Resolve a number into a thread and hand it to the parent. Shared by
+   * both halves of the dialog so a saved contact and a typed number go
+   * through exactly the same validation and the same error vocabulary —
+   * a stored number can be wrong too.
+   */
+  const startConversation = useCallback(
+    async (phoneValue: string) => {
+      setError(null);
+      try {
+        const res = await fetch("/api/whatsapp/conversations/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: phoneValue }),
+        });
+        const body = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          // The route distinguishes "not a phone number" from "real
+          // number, no WhatsApp" — they call for different corrections,
+          // so they get different messages.
+          const code = (body as { error?: string } | null)?.error;
+          setError(
+            code === "not_on_whatsapp"
+              ? t("errorNotOnWhatsapp")
+              : code === "invalid_number"
+                ? t("errorInvalidNumber")
+                : code === "not_connected"
+                  ? t("errorNotConnected")
+                  : t("errorGeneric"),
+          );
+          return;
+        }
+
+        const conversationId = (body as { conversation_id?: string } | null)
+          ?.conversation_id;
+        if (!conversationId) {
+          setError(t("errorGeneric"));
+          return;
+        }
+
+        reset();
+        onOpenChange(false);
+        onStarted(conversationId);
+      } catch {
+        setError(t("errorGeneric"));
+      }
+    },
+    [t, reset, onOpenChange, onStarted],
+  );
+
   const handleSubmit = useCallback(async () => {
     const trimmed = phone.trim();
     if (!trimmed || submitting) return;
-
     setSubmitting(true);
-    setError(null);
     try {
-      const res = await fetch("/api/whatsapp/conversations/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: trimmed }),
-      });
-      const body = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        // The route distinguishes "not a phone number" from "real
-        // number, no WhatsApp" — they call for different corrections,
-        // so they get different messages.
-        const code = (body as { error?: string } | null)?.error;
-        setError(
-          code === "not_on_whatsapp"
-            ? t("errorNotOnWhatsapp")
-            : code === "invalid_number"
-              ? t("errorInvalidNumber")
-              : code === "not_connected"
-                ? t("errorNotConnected")
-                : t("errorGeneric"),
-        );
-        return;
-      }
-
-      const conversationId = (body as { conversation_id?: string } | null)
-        ?.conversation_id;
-      if (!conversationId) {
-        setError(t("errorGeneric"));
-        return;
-      }
-
-      reset();
-      onOpenChange(false);
-      onStarted(conversationId);
-    } catch {
-      setError(t("errorGeneric"));
+      await startConversation(trimmed);
     } finally {
       setSubmitting(false);
     }
-  }, [phone, submitting, t, reset, onOpenChange, onStarted]);
+  }, [phone, submitting, startConversation]);
+
+  const handlePickContact = useCallback(
+    async (contact: Contact) => {
+      if (pendingContactId || !contact.phone) return;
+      setPendingContactId(contact.id);
+      try {
+        await startConversation(contact.phone);
+      } finally {
+        setPendingContactId(null);
+      }
+    },
+    [pendingContactId, startConversation],
+  );
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -153,10 +251,129 @@ export function NewConversationDialog({
         <DialogHeader>
           <DialogTitle className="text-lg">{t("title")}</DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            {t("description")}
+            {mode === "contacts" ? t("descriptionContacts") : t("description")}
           </DialogDescription>
         </DialogHeader>
 
+        {/* Mode switch — same segmented control as the inbox audience
+            tabs, so the two read as the same kind of choice. */}
+        <div
+          role="tablist"
+          aria-label={t("modeTabs")}
+          className="flex rounded-lg bg-muted p-0.5"
+        >
+          {(
+            [
+              { value: "contacts", label: t("modeContacts") },
+              { value: "number", label: t("modeNumber") },
+            ] as { value: StartMode; label: string }[]
+          ).map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={mode === tab.value}
+              onClick={() => {
+                setMode(tab.value);
+                // An error raised by the other half is about a number
+                // the user is no longer looking at.
+                setError(null);
+              }}
+              className={cn(
+                "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                mode === tab.value
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {mode === "contacts" ? (
+          <div className="space-y-3 py-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                autoFocus
+                value={contactSearch}
+                onChange={(e) => setContactSearch(e.target.value)}
+                placeholder={t("searchContactsPlaceholder")}
+                className="border-border bg-muted pl-9 text-foreground placeholder-muted-foreground"
+              />
+            </div>
+
+            {/* Fixed-height list: the dialog must not grow or shrink as
+                the filter narrows, or the buttons below it move under
+                the cursor mid-click. */}
+            <div className="h-64 overflow-y-auto rounded-lg border border-border">
+              {contactsLoading ? (
+                <div className="flex h-full items-center justify-center">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredContacts.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    {contacts.length === 0
+                      ? t("noContacts")
+                      : t("noContactsMatch")}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setMode("number")}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {t("useNumberInstead")}
+                  </button>
+                </div>
+              ) : (
+                filteredContacts.map((contact) => {
+                  const label = contact.name || contact.phone;
+                  const isPending = pendingContactId === contact.id;
+                  return (
+                    <button
+                      key={contact.id}
+                      type="button"
+                      onClick={() => void handlePickContact(contact)}
+                      disabled={pendingContactId !== null}
+                      className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/60 disabled:opacity-60"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-medium text-foreground">
+                        {contact.avatar_url ? (
+                          <img
+                            src={contact.avatar_url}
+                            alt={label}
+                            className="h-8 w-8 rounded-full object-cover"
+                          />
+                        ) : (
+                          label.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-foreground">{label}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {isPending ? t("checking") : contact.phone}
+                        </p>
+                      </div>
+                      {isPending ? (
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                      ) : (
+                        <MessageSquarePlus className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            {error && (
+              <p role="alert" className="text-xs text-destructive">
+                {error}
+              </p>
+            )}
+          </div>
+        ) : (
         <div className="space-y-3 py-2">
           {/* The mold. Shown ABOVE the field, and always — the format
               is the thing people get wrong, so it has to be readable
@@ -252,25 +469,30 @@ export function NewConversationDialog({
             </p>
           )}
         </div>
+        )}
 
         <DialogFooter className="gap-2 sm:justify-end">
           <Button
             type="button"
             variant="outline"
             onClick={() => handleOpenChange(false)}
-            disabled={submitting}
+            disabled={submitting || pendingContactId !== null}
             className="border-border text-muted-foreground hover:bg-muted"
           >
             {t("cancel")}
           </Button>
-          <Button
-            type="button"
-            onClick={() => void handleSubmit()}
-            disabled={submitting || !phone.trim()}
-          >
-            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {submitting ? t("checking") : t("start")}
-          </Button>
+          {/* Only the typed-number half has something to submit — a
+              contact row IS its own submit button. */}
+          {mode === "number" && (
+            <Button
+              type="button"
+              onClick={() => void handleSubmit()}
+              disabled={submitting || !phone.trim()}
+            >
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {submitting ? t("checking") : t("start")}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
