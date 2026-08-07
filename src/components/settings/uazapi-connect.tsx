@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { CheckCircle2, XCircle, Loader2, RotateCcw, QrCode } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, RotateCcw, QrCode, Phone } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { useTranslations } from 'next-intl';
@@ -53,6 +53,17 @@ export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
   const [connection, setConnection] = useState<UazapiConnectionRow | null>(null);
   const [qrcode, setQrcode] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
+  /**
+   * The line on the other end, once UAZAPI has told us.
+   *
+   * `null` while we haven't asked or the answer had nothing in it;
+   * `'unreachable'` when the instance refused the question, which is
+   * different and worth saying out loud — the card would otherwise
+   * keep claiming "Conectado" off a stale database row while the
+   * instance token behind it is dead.
+   */
+  const [connectedPhone, setConnectedPhone] = useState<string | null>(null);
+  const [phoneUnreachable, setPhoneUnreachable] = useState(false);
   const loadedAccountIdRef = useRef<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const qrDeadlineRef = useRef<number | null>(null);
@@ -113,6 +124,33 @@ export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
     fetchConnection(accountId);
   }, [authLoading, profileLoading, user?.id, accountId, fetchConnection]);
 
+  /**
+   * Ask the instance which number it is, for a line the database
+   * already considers connected. Runs once when the card opens; the
+   * connect flow's poll below covers the freshly-scanned case.
+   */
+  const fetchConnectedPhone = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/whatsapp/uazapi/status?scope=${scope}`);
+      if (!res.ok) {
+        setPhoneUnreachable(true);
+        return;
+      }
+      const data = await res.json();
+      setConnectedPhone(typeof data.phone === 'string' ? data.phone : null);
+      setPhoneUnreachable(false);
+    } catch {
+      // Offline or the instance is unreachable. The card still shows
+      // what the database knows; it just cannot name the number.
+      setPhoneUnreachable(true);
+    }
+  }, [scope]);
+
+  useEffect(() => {
+    if (viewState !== 'connected') return;
+    fetchConnectedPhone();
+  }, [viewState, fetchConnectedPhone]);
+
   const pollStatus = useCallback(() => {
     stopPolling();
     pollRef.current = setInterval(async () => {
@@ -131,6 +169,8 @@ export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
           stopPolling();
           setViewState('connected');
           setQrcode(null);
+          setConnectedPhone(typeof data.phone === 'string' ? data.phone : null);
+          setPhoneUnreachable(false);
           if (accountId) await fetchConnection(accountId);
           toast.success(
             data.profile_name
@@ -248,6 +288,21 @@ export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
               {isConnected ? t('connected') : t('notConnected')}
             </AlertTitle>
           </div>
+          {/* Which number is on the other end. It is the one thing
+              this card could not answer before: the status line said
+              "Conectado" and left you to guess WHICH phone that was —
+              a real question once an account holds several. */}
+          {isConnected && connectedPhone && (
+            <AlertDescription className="mt-1 flex items-center gap-1.5 text-foreground">
+              <Phone className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="font-medium tabular-nums">{connectedPhone}</span>
+            </AlertDescription>
+          )}
+          {isConnected && !connectedPhone && phoneUnreachable && (
+            <AlertDescription className="mt-1 text-amber-600 dark:text-amber-400">
+              {t('numberUnreachable')}
+            </AlertDescription>
+          )}
           {isConnected && connection?.uazapi_instance_name && (
             <AlertDescription className="text-muted-foreground">
               {t('connectedAs', { name: connection.uazapi_instance_name })}

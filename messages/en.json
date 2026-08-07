@@ -1501,7 +1501,8 @@
       "connectError": "Could not start the connection. Try again.",
       "statusError": "Could not check connection status.",
       "mineTitle": "My WhatsApp number",
-      "mineDescription": "Pair your own number by scanning the QR code with your phone. Conversations arriving on it appear in your inbox only, and your replies go out from it."
+      "mineDescription": "Pair your own number by scanning the QR code with your phone. Conversations arriving on it appear in your inbox only, and your replies go out from it.",
+      "numberUnreachable": "Could not confirm the number with UAZAPI. The connection may have expired — use “Check / repair connection”."
     }
   }
 }

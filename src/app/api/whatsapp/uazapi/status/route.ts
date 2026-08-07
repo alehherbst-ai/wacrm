@@ -6,6 +6,7 @@ import {
 } from '@/lib/whatsapp/connection-target';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { getInstanceStatus } from '@/lib/whatsapp/uazapi-api';
+import { connectedNumberFrom } from '@/lib/whatsapp/connected-number';
 
 /**
  * GET /api/whatsapp/uazapi/status
@@ -62,6 +63,13 @@ export async function GET(request: Request) {
       qrcode: result.instance.qrcode ?? null,
       paircode: result.instance.paircode ?? null,
       profile_name: result.instance.profileName ?? null,
+      // Which line is actually on the other end. Not stored anywhere:
+      // the number is chosen on the phone when the QR code is scanned,
+      // so UAZAPI is the only thing that can answer.
+      phone: connectedNumberFrom({
+        owner: result.instance.owner,
+        jid: result.status.jid,
+      }),
     });
   } catch (error) {
     return toErrorResponse(error);

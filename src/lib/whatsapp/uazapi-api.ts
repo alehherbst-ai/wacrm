@@ -62,6 +62,12 @@ export interface UazapiInstance {
   paircode?: string;
   name?: string;
   profileName?: string;
+  /**
+   * The connected line, bare digits. Only UAZAPI knows this — the
+   * number is decided on the phone at QR-scan time, so nothing in our
+   * own schema can hold it until the instance reports it back.
+   */
+  owner?: string;
 }
 
 export interface CreateInstanceArgs {
