@@ -6,6 +6,75 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-07] Caixa de entrada: encerrar um atendimento por vez, filtrar por operador, e menos controles
+
+**Antes:** quatro incômodos de uso na caixa de entrada, todos herdados de
+quando a conta tinha um número só e uma caixa compartilhada:
+
+1. **"Limpar caixa" era tudo ou nada.** O botão arquivava *todas* as
+   conversas visíveis de uma vez — inclusive, de propósito, as que
+   estavam fora do filtro ativo no momento. Funcionava como anunciado,
+   mas a unidade útil de trabalho é **um** atendimento terminado, não a
+   caixa inteira; na prática ninguém queria zerar tudo.
+2. **A aba "Todos"** misturava contatos e grupos, o que torna as outras
+   duas abas decorativas: se o padrão mostra tudo, a escolha não é uma
+   escolha.
+3. **Não dava para filtrar por operador.** Com mais de um número na
+   conta, "me mostre só as minhas" e "o que está com o Bruno" viraram
+   perguntas diárias sem resposta na interface.
+4. **"Atribuir" duplicava a transferência.** Marcava um responsável numa
+   coluna (`assigned_agent_id`) que não governa nada: quem pode
+   responder é o dono do número em que a conversa vive, e isso quem
+   define é a transferência. Dois controles para a mesma pergunta,
+   podendo discordar entre si.
+
+**Depois:**
+- **"Encerrar atendimento"** no cabeçalho da conversa, uma de cada vez.
+  Usa `archived_at` (migration 040), não `status='closed'`: a conversa
+  sai da caixa e **nada é apagado**. Ela volta sozinha quando o cliente
+  escreve de novo (o pipeline de entrada limpa o carimbo) ou quando o
+  próprio operador responde a partir do filtro "Arquivadas" (o
+  `sendMessage` limpa também). Só aparece para quem de fato atende
+  aquela conversa — um observador não esconde da própria lista uma
+  conversa que não é dele.
+- **Abas Contatos / Grupos**, sem "Todos". O padrão passa a ser
+  Contatos.
+- **Um painel único de filtros** com "Quem atende" (todos, você, cada
+  operador com número, número da casa) e as tags, que antes tinham um
+  dropdown só delas. O contador no gatilho soma os dois, e o filtro de
+  operador ganha chip removível na linha de filtros ativos.
+- **"Atribuir" removido** da interface. A coluna continua existindo e
+  sendo escrita pelo banner de IA, que atribui a conversa a quem assume
+  o atendimento do robô — remover isso quebraria o handoff.
+
+**Decisões que vale registrar:**
+1. **Encerrar é `archived_at`, não `status='closed'`.** São coisas
+   diferentes e a 040 já explicava o porquê: "fechada" é um veredito de
+   fluxo que o operador registra e filtra; "encerrada/arquivada" é um
+   estado de visualização que a próxima mensagem desfaz sozinha.
+   Sobrepor as duas transformaria o filtro "Fechadas" num depósito de
+   entulho.
+2. **O botão diz "Encerrar atendimento", o filtro continua
+   "Arquivadas".** Chamar o filtro de "Encerradas" o deixaria colado em
+   "Fechadas", que já existe e significa outra coisa. O texto de ajuda
+   do botão cita o nome real do filtro, para que os dois se encontrem.
+3. **O filtro de operador lê o mesmo mapa conexão→operador do
+   selo de titularidade.** Escolher "Bruno" seleciona exatamente as
+   linhas que dizem "Atende: Bruno" — não há uma segunda definição de
+   dono capaz de divergir da primeira.
+4. **As opções do filtro vêm das conexões, não da lista de equipe.** Um
+   colega sem número não atende conversa nenhuma; oferecê-lo seria uma
+   opção que só devolve lista vazia.
+
+**Resolvido:** pedido do usuário, com as quatro mudanças de usabilidade
+listadas acima. O pano de fundo é o mesmo das etapas de operadores: uma
+caixa desenhada para um número só ganha perguntas novas assim que passa
+a ter vários.
+
+Arquivos: `src/components/inbox/message-thread.tsx`,
+`src/components/inbox/conversation-list.tsx`,
+`src/app/(dashboard)/inbox/page.tsx`, `messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-07] Quem atende a conversa passa a ser dito, não deduzido
 
 **Antes:** com o modelo de operadores no ar, cada conversa tem exatamente

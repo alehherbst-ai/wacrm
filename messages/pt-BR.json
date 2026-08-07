@@ -151,7 +151,6 @@
     "conversationList": {
       "searchPlaceholder": "Buscar conversas...",
       "audienceTabs": "Tipo de conversa",
-      "tabAll": "Todas",
       "tabContacts": "Contatos",
       "tabGroups": "Grupos",
       "filterAll": "Todas",
@@ -168,9 +167,6 @@
       "noConversations": "Nenhuma conversa encontrada",
       "noMessagesYet": "Nenhuma mensagem ainda",
       "unknown": "Desconhecido",
-      "clearInbox": "Limpar caixa",
-      "clearInboxDone": "{count} {count, plural, =1 {conversa arquivada} other {conversas arquivadas}}",
-      "clearInboxError": "Não foi possível limpar a caixa de entrada",
       "contactSuggestions": "Contatos salvos",
       "startConversationHint": "Abrir conversa",
       "startingConversation": "Abrindo conversa...",
@@ -179,7 +175,13 @@
       "ownerYou": "Você atende",
       "ownerOther": "Atende: {operator}",
       "ownerHandedOver": "Transferida por você",
-      "ownerHouse": "Número da casa"
+      "ownerHouse": "Número da casa",
+      "filters": "Filtros",
+      "ownerFilterHeading": "Quem atende",
+      "ownerFilterAll": "Todos os operadores",
+      "ownerFilterMine": "Minhas conversas",
+      "ownerFilterHouse": "Número da casa",
+      "ownerFilterUnnamed": "Operador sem nome"
     },
     "newConversation": {
       "title": "Nova conversa",
@@ -221,10 +223,6 @@
       "statusOpen": "Aberta",
       "statusPending": "Pendente",
       "statusClosed": "Fechada",
-      "assign": "Atribuir",
-      "assigned": "Atribuído",
-      "unassign": "Remover atribuição",
-      "noTeammates": "Nenhum integrante da equipe disponível",
       "me": " (eu)",
       "noMessagesYet": "Nenhuma mensagem ainda",
       "selectConversation": "Selecione uma conversa",
@@ -249,7 +247,11 @@
       "ownerHandedOverHint": "Você passou esta conversa adiante. Se o cliente escrever aqui de novo, ela volta a ser sua.",
       "ownerHouseHint": "Esta conversa chega no número da casa, que não é de ninguém em particular.",
       "ownerUnknownHint": "Esta conversa não está ligada a nenhum número conectado.",
-      "transferShort": "Transferir"
+      "transferShort": "Transferir",
+      "endConversation": "Encerrar atendimento",
+      "endConversationHint": "Tira esta conversa da caixa de entrada. Nada é apagado — ela volta sozinha se o cliente escrever de novo, e você a encontra no filtro “Arquivadas”.",
+      "endConversationDone": "Atendimento encerrado. A conversa saiu da caixa.",
+      "endConversationError": "Não foi possível encerrar o atendimento."
     },
     "composer": {
       "draftHint": "Toque no ✨ para rascunhar uma resposta com IA — você pode editar antes de enviar",
