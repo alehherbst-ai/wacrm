@@ -11,7 +11,11 @@ Entradas mais recentes primeiro.
 > **Requer migration.** `supabase/migrations/046_operators_fix_unique_and_chain.sql`,
 > aplicada **depois** da 045. O cabeçalho traz o SQL de reversão.
 > As 044, 045 e 046 já estão aplicadas no projeto de produção
-> (`qinerutevsfzyhdmqpbm`); falta apenas o deploy do código.
+> (`qinerutevsfzyhdmqpbm`). O deploy do código saiu automaticamente com o
+> push na `main` (o Hostinger constrói a cada push): os arquivos estáticos
+> em `vbase.com.br` datam de 2026-08-06 23:41 UTC, ~2 min após o push.
+> A ordem obrigatória — migrations antes do código — foi respeitada: as
+> migrations entraram às 23:30 UTC, o build às 23:41 UTC.
 
 **Antes:** as etapas 1 e 2 tinham sido escritas e revisadas, mas nunca
 executadas contra um banco — a máquina de desenvolvimento não tinha
