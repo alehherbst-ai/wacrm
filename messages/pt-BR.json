@@ -253,7 +253,9 @@
       "ownerHandedOverToHint": "Você passou esta conversa para {operator}, que é quem responde agora. Se o cliente escrever no seu número de novo, ela volta a ser sua.",
       "observingHandedOverTo": "Esta conversa está com {operator}. Você está acompanhando.",
       "observingHandedOverGeneric": "Esta conversa foi passada adiante. Você está acompanhando.",
-      "startConversationHint": "Envie a primeira mensagem para começar."
+      "startConversationHint": "Envie a primeira mensagem para começar.",
+      "ownerHandedOverNeutral": "Transferida — acompanhando",
+      "ownerHandedOverNeutralHint": "Esta conversa foi passada adiante por outra pessoa. Você acompanha, mas quem responde é quem a recebeu."
     },
     "composer": {
       "draftHint": "Toque no ✨ para rascunhar uma resposta com IA — você pode editar antes de enviar",

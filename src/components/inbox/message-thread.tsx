@@ -1064,14 +1064,21 @@ export function MessageThread({
       case "handedOver":
         return {
           Icon: ArrowRightLeft,
-          // Name whoever is answering it now; fall back to the state
-          // only when the chain hasn't resolved a name yet.
+          // Name whoever is answering it now. Without a name, say only
+          // what is certainly true: the badge must not claim YOU handed
+          // it on when the chain says somebody else did — the footer
+          // right below already gets this right, and the two sitting on
+          // one screen disagreeing is worse than either alone.
           value: handedOverToName
             ? t("ownerHandedOverTo", { operator: handedOverToName })
-            : t("ownerHandedOver"),
+            : conversation.transferred_by_user_id === user?.id
+              ? t("ownerHandedOver")
+              : t("ownerHandedOverNeutral"),
           hint: handedOverToName
             ? t("ownerHandedOverToHint", { operator: handedOverToName })
-            : t("ownerHandedOverHint"),
+            : conversation.transferred_by_user_id === user?.id
+              ? t("ownerHandedOverHint")
+              : t("ownerHandedOverNeutralHint"),
           tone: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
           iconTone: "text-amber-600 dark:text-amber-400",
         };

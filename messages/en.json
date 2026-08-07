@@ -253,7 +253,9 @@
       "ownerHandedOverToHint": "You passed this conversation to {operator}, who answers it now. If the customer writes to your number again, it becomes yours once more.",
       "observingHandedOverTo": "{operator} is handling this conversation. You're following it.",
       "observingHandedOverGeneric": "This conversation was passed on. You're following it.",
-      "startConversationHint": "Send the first message to get started."
+      "startConversationHint": "Send the first message to get started.",
+      "ownerHandedOverNeutral": "Transferred — following",
+      "ownerHandedOverNeutralHint": "Somebody else passed this conversation on. You follow it, but whoever received it is the one who answers."
     },
     "composer": {
       "draftHint": "Tap the ✨ to draft a reply with AI — you can edit it before sending",
