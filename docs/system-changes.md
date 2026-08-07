@@ -6,6 +6,52 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-07] Fim do status Aberta/Pendente/Fechada na caixa de entrada
+
+**Antes:** cada conversa carregava um status de fluxo — aberta, pendente
+ou fechada — que o operador escolhia num dropdown no cabeçalho. Ele nasceu
+quando a caixa era compartilhada e o status era a única forma de dizer "já
+cuidei disto". Com o modelo de operadores, as duas perguntas que ele
+respondia passaram a ter respostas melhores em outro lugar: **quem cuida**
+é o dono do número em que a conversa vive, e **já acabou** é o "Encerrar
+atendimento", que tira a conversa da caixa. O status virou um terceiro
+eixo que ninguém precisava manter, e que podia contradizer os outros dois.
+
+**Depois:**
+- O dropdown de status **saiu** do cabeçalho da conversa.
+- Os filtros **Abertas / Pendentes / Fechadas** saíram da lista. Sobraram
+  os que ainda respondem alguma coisa: Todas, Não lidas e Arquivadas.
+- A **bolinha colorida** de status saiu das linhas da lista.
+- **"Conversas ativas" no dashboard passou a contar "não arquivadas"** em
+  vez de `status = 'open'`.
+
+**Decisões que vale registrar:**
+1. **A coluna `status` continua no banco, e de propósito.** Ela não é só
+   da caixa de entrada: a API pública documenta o filtro `?status=`
+   (contrato externo, quebrar seria mexer em integrações de terceiros),
+   as automações têm um passo `close_conversation` que o usuário pode
+   arrastar para um fluxo, e o nó de handoff dos fluxos marca `pending`.
+   Derrubar a coluna quebraria os quatro de uma vez.
+2. **Mas o dashboard não podia ficar como estava.** "Conversas ativas"
+   contava `status = 'open'`, e sem nenhum controle humano que mude esse
+   valor a métrica iria virando, em silêncio, "todas as conversas de
+   todos os tempos". Passou a contar `archived_at IS NULL`, que é
+   literalmente "ainda está na caixa" — o que o rótulo sempre prometeu.
+3. **Consequência que fica em aberto:** o passo `close_conversation` das
+   automações continua funcionando e gravando `status='closed'`, só que
+   agora **sem efeito visível** na caixa de entrada. Não foi removido
+   porque automações já existentes podem referenciá-lo, e isso é decisão
+   do usuário, não limpeza de rotina.
+
+**Resolvido:** pedido do usuário — "com as novas funcionalidades de
+transferência não precisamos mais desse feature de Aberta/Fechada/
+Pendente".
+
+Arquivos: `src/components/inbox/message-thread.tsx`,
+`src/components/inbox/conversation-list.tsx`,
+`src/app/(dashboard)/inbox/page.tsx`, `src/lib/dashboard/queries.ts`,
+`messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-07] Puxar uma conversa para si, e a conversa sempre com um nome
 
 > **Requer migration.** `supabase/migrations/047_pull_conversation.sql`,

@@ -43,16 +43,26 @@ export async function loadMetrics(db: DB): Promise<MetricsBundle> {
     messagesToday,
     messagesYesterday,
   ] = await Promise.all([
-    db.from('conversations').select('id', { count: 'exact', head: true }).eq('status', 'open'),
+    // "Active" is now "still in the inbox", not `status = 'open'`.
+    // The open/pending/closed control is gone from the inbox — who
+    // answers a conversation is settled by whose number it lives on,
+    // and a finished one leaves through "Encerrar atendimento", which
+    // stamps `archived_at`. Counting `status = 'open'` here would have
+    // quietly drifted into "every conversation ever", because nothing
+    // a person can click sets it to anything else any more.
     db
       .from('conversations')
       .select('id', { count: 'exact', head: true })
-      .eq('status', 'open')
+      .is('archived_at', null),
+    db
+      .from('conversations')
+      .select('id', { count: 'exact', head: true })
+      .is('archived_at', null)
       .gte('created_at', todayStart),
     db
       .from('conversations')
       .select('id', { count: 'exact', head: true })
-      .eq('status', 'open')
+      .is('archived_at', null)
       .gte('created_at', yesterdayStart)
       .lt('created_at', todayStart),
     db.from('contacts').select('id', { count: 'exact', head: true }).gte('created_at', todayStart),

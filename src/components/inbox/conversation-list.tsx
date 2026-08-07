@@ -14,7 +14,7 @@ import {
   type OwnerLookup,
 } from "@/lib/inbox/conversation-owner";
 import { cn } from "@/lib/utils";
-import type { Contact, Conversation, ConversationStatus, Tag } from "@/types";
+import type { Contact, Conversation, Tag } from "@/types";
 import {
   Search,
   ChevronDown,
@@ -66,15 +66,16 @@ interface ConversationListProps {
   onConversationStarted?: (conversationId: string) => void;
 }
 
-const STATUS_COLORS: Record<ConversationStatus, string> = {
-  open: "bg-primary",
-  pending: "bg-amber-500",
-  closed: "bg-muted-foreground",
-};
 
 
-
-type InboxFilter = ConversationStatus | "all" | "unread" | "archived";
+/**
+ * The inbox no longer carries a workflow status (open/pending/closed):
+ * who answers a conversation is settled by whose number it lives on,
+ * and a finished one leaves via "Encerrar atendimento". What is left
+ * are the two questions the list still answers — is there anything
+ * new, and what did I put away.
+ */
+type InboxFilter = "all" | "unread" | "archived";
 
 /**
  * Audience tabs — people vs groups. Orthogonal to the status filter on
@@ -149,9 +150,6 @@ export function ConversationList({
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
     { label: t("filterAll"), value: "all" },
     { label: t("filterUnread"), value: "unread" },
-    { label: t("filterOpen"), value: "open" },
-    { label: t("filterPending"), value: "pending" },
-    { label: t("filterClosed"), value: "closed" },
     // Archived threads are hidden from every other view, so this is
     // the only way back to one before the contact writes again — the
     // "clear inbox" action would otherwise read as destructive.
@@ -350,8 +348,6 @@ export function ConversationList({
 
       if (filter === "unread") {
         result = result.filter((c) => c.unread_count > 0);
-      } else if (filter !== "all") {
-        result = result.filter((c) => c.status === filter);
       }
     }
 
@@ -1071,13 +1067,6 @@ function ConversationItem({
                 {conversation.unread_count}
               </span>
             )}
-            <span
-              className={cn(
-                "h-2 w-2 rounded-full",
-                STATUS_COLORS[conversation.status]
-              )}
-              title={conversation.status}
-            />
           </div>
         </div>
         {ownerChip && OwnerChipIcon && (
