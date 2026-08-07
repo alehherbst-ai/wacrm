@@ -3,9 +3,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { usePresence } from "@/hooks/use-presence";
-import { PresenceDot } from "@/components/presence/presence-dot";
-import { presenceLabel } from "@/lib/presence";
 import { cn } from "@/lib/utils";
 import type {
   Conversation,
@@ -19,8 +16,7 @@ import type {
 import {
   MessageSquare,
   ChevronDown,
-  UserPlus,
-  Check,
+  CheckCheck,
   ArrowLeft,
   RefreshCw,
   PanelRightOpen,
@@ -38,7 +34,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -77,10 +72,20 @@ interface MessageThreadProps {
   onNewMessage: (message: Message) => void;
   onUpdateMessage: (id: string, updates: Partial<Message>) => void;
   onStatusChange: (conversationId: string, status: ConversationStatus) => void;
+  /**
+   * Still here for the AI banner, which assigns the thread to whoever
+   * takes over from the bot. There is no longer a manual "assign"
+   * control — transferring a conversation is what names its owner.
+   */
   onAssignChange: (
     conversationId: string,
     assignedAgentId: string | null,
   ) => void;
+  /**
+   * Fired after the thread is archived out of the inbox, so the page
+   * can drop the row and close the pane without waiting on realtime.
+   */
+  onEndConversation: (conversationId: string, endedAt: string) => void;
   /**
    * On mobile, the thread is shown full-screen with the conversation list
    * hidden. This callback lets the page deselect the active conversation
@@ -174,6 +179,7 @@ export function MessageThread({
   onUpdateMessage,
   onStatusChange,
   onAssignChange,
+  onEndConversation,
   onBack,
   resyncToken = 0,
   onRefresh,
@@ -185,7 +191,6 @@ export function MessageThread({
   const tQuote = useTranslations("Inbox.replyQuote");
 
   const { user, canSendMessages, seesEveryConversation } = useAuth();
-  const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -232,6 +237,7 @@ export function MessageThread({
     Map<string, string>
   >(new Map());
   const [transferOpen, setTransferOpen] = useState(false);
+  const [endingConversation, setEndingConversation] = useState(false);
 
   // Profiles are bounded by RLS to rows the current user is allowed to
   // see — today that's just the current user, but the dropdown keeps the
@@ -901,26 +907,42 @@ export function MessageThread({
     [conversation, user?.id],
   );
 
-  const handleAssignChange = useCallback(
-    async (agentId: string | null) => {
-      if (!conversation) return;
+  /**
+   * End the handling of this conversation: it leaves the inbox, and
+   * nothing else about it changes.
+   *
+   * This is `archived_at` (migration 040), not `status = 'closed'`.
+   * Closing is a workflow verdict the agent records and can filter on;
+   * ending is a view state that the next inbound message silently
+   * undoes. Every message, tag and pipeline link stays exactly where it
+   * was — the list simply stops showing the row.
+   *
+   * It comes back on its own: the inbound pipeline clears the stamp
+   * when the customer writes again, and so does `sendMessage` when the
+   * operator reopens it themselves from the "Encerradas" filter. That
+   * is the whole of "the history stays for whoever picks it up again".
+   */
+  const handleEndConversation = useCallback(async () => {
+    if (!conversation) return;
 
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("conversations")
-        .update({ assigned_agent_id: agentId })
-        .eq("id", conversation.id);
+    setEndingConversation(true);
+    const endedAt = new Date().toISOString();
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("conversations")
+      .update({ archived_at: endedAt, unread_count: 0 })
+      .eq("id", conversation.id);
+    setEndingConversation(false);
 
-      if (error) {
-        console.error("Failed to update assignment:", error);
-        toast.error("Failed to update assignment");
-        return;
-      }
+    if (error) {
+      console.error("Failed to end the conversation:", error);
+      toast.error(t("endConversationError"));
+      return;
+    }
 
-      onAssignChange(conversation.id, agentId);
-    },
-    [conversation, onAssignChange],
-  );
+    toast.success(t("endConversationDone"));
+    onEndConversation(conversation.id, endedAt);
+  }, [conversation, onEndConversation, t]);
 
   // Empty state — same WhatsApp-style doodle background as the active
   // thread below, so swapping between empty/selected doesn't change the
@@ -1035,11 +1057,15 @@ export function MessageThread({
   const currentStatus = STATUS_OPTIONS.find(
     (s) => s.value === conversation.status
   );
+  // Still read (the AI banner hides itself once a human owns the
+  // thread), but no longer settable by hand: transferring a
+  // conversation is what puts a name on it now.
   const assignedAgentId = conversation.assigned_agent_id ?? null;
-  const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
-  const assignLabel = assignedAgentId
-    ? (currentAssignee?.full_name ?? t("assigned"))
-    : t("assign");
+  // Ending is for a thread you actually handle. An observer hiding
+  // somebody else's conversation from their own list would be doing it
+  // to a row that is not theirs to close.
+  const canEndConversation =
+    canSendMessages && role.kind === "owner" && !conversation.archived_at;
 
   return (
     // `min-w-0` is load-bearing: the page already puts min-w-0 on the
@@ -1193,70 +1219,29 @@ export function MessageThread({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Assign dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className={cn(
-                "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                assignedAgentId ? "text-primary" : "text-muted-foreground"
-              )}
+          {/* End this handling — the thread leaves the inbox and keeps
+              everything. Replaces the old "clear inbox", which emptied
+              the whole list in one go: the useful unit is one finished
+              conversation, not all of them at once. */}
+          {canEndConversation && (
+            <button
+              type="button"
+              onClick={handleEndConversation}
+              disabled={endingConversation}
+              aria-label={t("endConversation")}
+              title={t("endConversationHint")}
+              className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 sm:px-3"
             >
-              <UserPlus className="h-3 w-3" />
-              <span className="hidden sm:inline">{assignLabel}</span>
-              <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
-            >
-              {profiles.length === 0 ? (
-                <DropdownMenuItem disabled className="text-sm text-muted-foreground">
-                  {t("noTeammates")}
-                </DropdownMenuItem>
+              {endingConversation ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
               ) : (
-                profiles.map((p) => {
-                  const isSelected = p.user_id === assignedAgentId;
-                  const presence = getPresence(p.user_id);
-                  return (
-                    <DropdownMenuItem
-                      key={p.id}
-                      onClick={() => handleAssignChange(p.user_id)}
-                      className={cn(
-                        "text-sm",
-                        isSelected ? "text-primary" : "text-popover-foreground"
-                      )}
-                    >
-                      <PresenceDot
-                        status={presence}
-                        label={presenceLabel(
-                          presence,
-                          getRow(p.user_id)?.last_seen_at ?? null,
-                          now
-                        )}
-                        className="mr-2"
-                      />
-                      <span className="flex-1">
-                        {p.full_name}
-                        {p.user_id === user?.id ? t("me") : ""}
-                      </span>
-                      {isSelected && <Check className="ml-2 h-3 w-3" />}
-                    </DropdownMenuItem>
-                  );
-                })
+                <CheckCheck className="h-4 w-4" />
               )}
-              {assignedAgentId && (
-                <>
-                  <DropdownMenuSeparator className="bg-border" />
-                  <DropdownMenuItem
-                    onClick={() => handleAssignChange(null)}
-                    className="text-sm text-muted-foreground"
-                  >
-                    {t("unassign")}
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+              <span className="hidden text-xs font-medium sm:inline">
+                {t("endConversation")}
+              </span>
+            </button>
+          )}
 
           {/* Contact-panel toggle — desktop only. The contact sidebar
               eats a chunk of horizontal width that crowds the thread on

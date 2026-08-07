@@ -20,7 +20,8 @@ import {
   ChevronDown,
   X,
   Users,
-  CheckCheck,
+  Check,
+  SlidersHorizontal,
   Plus,
   MessageSquarePlus,
   UserCheck,
@@ -39,6 +40,8 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -55,12 +58,6 @@ interface ConversationListProps {
    * or the tab was throttled. Optional so existing callers keep working.
    */
   resyncToken?: number;
-  /**
-   * Called after "clear inbox" successfully zeroes every unread count
-   * server-side, so the parent can mirror it in state immediately
-   * instead of waiting for N realtime UPDATEs to round-trip.
-   */
-  onMarkAllRead?: () => void;
   /**
    * Fired after "new conversation" resolves a typed number into a
    * thread. The parent owns selection, so it decides what to open.
@@ -83,7 +80,14 @@ type InboxFilter = ConversationStatus | "all" | "unread" | "archived";
  * purpose: "unread groups" and "open 1:1s" are both real workflows, so
  * the two compose instead of one replacing the other.
  */
-type InboxAudience = "all" | "people" | "groups";
+type InboxAudience = "people" | "groups";
+
+/**
+ * Sentinel for "the house number" in the owner filter. A real option
+ * value is a user id; the house number has no operator, so it needs a
+ * value of its own that cannot collide with one.
+ */
+const HOUSE_OWNER = "__house__";
 
 export function ConversationList({
   activeConversationId,
@@ -91,7 +95,6 @@ export function ConversationList({
   conversations,
   onConversationsLoaded,
   resyncToken = 0,
-  onMarkAllRead,
   onConversationStarted,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
@@ -156,9 +159,12 @@ export function ConversationList({
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
-  const [audience, setAudience] = useState<InboxAudience>("all");
+  const [audience, setAudience] = useState<InboxAudience>("people");
+  // Filter by who answers the conversation: "" = everyone, otherwise a
+  // user id. Kept separate from the tag filter so clearing one doesn't
+  // silently clear the other, even though they share a panel.
+  const [ownerFilter, setOwnerFilter] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  const [clearingInbox, setClearingInbox] = useState(false);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   // Saved contacts, for suggesting people who have no thread yet.
   const [allContacts, setAllContacts] = useState<Contact[]>([]);
@@ -280,18 +286,58 @@ export function ConversationList({
     return m;
   }, [tags]);
 
+  /**
+   * Who can appear in the owner filter: every operator who actually
+   * owns a number, plus the house number when one exists. Built from
+   * the connections rather than from the team list, because a teammate
+   * with no number owns no conversations — offering them would be an
+   * option that always returns an empty list.
+   */
+  const ownerOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [];
+    let hasHouse = false;
+    const seen = new Set<string>();
+
+    for (const operator of ownerLookup.operatorByConnection.values()) {
+      if (!operator) {
+        hasHouse = true;
+        continue;
+      }
+      if (seen.has(operator)) continue;
+      seen.add(operator);
+      options.push({
+        value: operator,
+        label:
+          operator === user?.id
+            ? t("ownerFilterMine")
+            : (ownerLookup.nameByUserId.get(operator) ?? t("ownerFilterUnnamed")),
+      });
+    }
+
+    // "You" first — it is the option an operator reaches for most.
+    options.sort((a, b) => {
+      if (a.value === user?.id) return -1;
+      if (b.value === user?.id) return 1;
+      return a.label.localeCompare(b.label);
+    });
+
+    if (hasHouse) {
+      options.push({ value: HOUSE_OWNER, label: t("ownerFilterHouse") });
+    }
+    return options;
+  }, [ownerLookup, user?.id, t]);
+
   const filtered = useMemo(() => {
     let result = conversations;
 
-    if (audience !== "all") {
-      // `is_group` is nullable on old rows — treat absent as "person",
-      // which is what every pre-038 contact actually is.
-      result = result.filter((c) =>
-        audience === "groups"
-          ? c.contact?.is_group === true
-          : c.contact?.is_group !== true
-      );
-    }
+    // Always applied now that the tabs are a strict either/or:
+    // `is_group` is nullable on old rows — treat absent as "person",
+    // which is what every pre-038 contact actually is.
+    result = result.filter((c) =>
+      audience === "groups"
+        ? c.contact?.is_group === true
+        : c.contact?.is_group !== true
+    );
 
     // Archived threads are hidden from every view except their own
     // (migration 040). Applied before the status filter so "Fechadas"
@@ -306,6 +352,22 @@ export function ConversationList({
       } else if (filter !== "all") {
         result = result.filter((c) => c.status === filter);
       }
+    }
+
+    // Who answers it. Reads the same connection→operator map the
+    // ownership badge reads, so picking "Bruno" here selects exactly
+    // the rows that say "Atende: Bruno".
+    if (ownerFilter) {
+      result = result.filter((c) => {
+        if (!c.whatsapp_config_id) return false;
+        const operator = ownerLookup.operatorByConnection.get(
+          c.whatsapp_config_id,
+        );
+        if (operator === undefined) return false;
+        return ownerFilter === HOUSE_OWNER
+          ? operator === ""
+          : operator === ownerFilter;
+      });
     }
 
     // Contact-based filters (tags via OR logic, exact company match).
@@ -356,7 +418,16 @@ export function ConversationList({
       if (!bt) return -1;
       return new Date(bt).getTime() - new Date(at).getTime();
     });
-  }, [conversations, audience, filter, search, selectedTagIds, selectedCompany]);
+  }, [
+    conversations,
+    audience,
+    filter,
+    search,
+    selectedTagIds,
+    selectedCompany,
+    ownerFilter,
+    ownerLookup,
+  ]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -369,7 +440,16 @@ export function ConversationList({
     setSelectedCompany(null);
   }, []);
 
-  const hasContactFilters = selectedTagIds.length > 0 || selectedCompany !== null;
+  const hasContactFilters =
+    selectedTagIds.length > 0 || selectedCompany !== null || ownerFilter !== "";
+
+  // Everything the combined panel can switch on, counted together so
+  // the trigger badge reflects the panel's whole contents.
+  const activeFilterCount =
+    selectedTagIds.length + (ownerFilter === "" ? 0 : 1);
+
+  const ownerFilterLabel =
+    ownerOptions.find((o) => o.value === ownerFilter)?.label ?? null;
 
   /**
    * Saved contacts matching the search that have NO conversation in the
@@ -459,57 +539,6 @@ export function ConversationList({
     [onSelect]
   );
 
-  // How many threads the clear action would actually take off the list.
-  // Counts every visible thread, not just unread ones — clearing the
-  // inbox empties it, so the button has work to do whenever anything
-  // is listed.
-  const clearableConversations = useMemo(
-    () => conversations.filter((c) => !c.archived_at).length,
-    [conversations],
-  );
-
-  /**
-   * Clear the inbox: mark everything read AND archive it out of the
-   * list. Nothing is deleted — the thread and its messages stay put,
-   * and the next inbound message un-archives it automatically (see the
-   * webhook's conversation update), so the history comes back with it.
-   *
-   * The `.is("archived_at", null)` filter scopes the statement to rows
-   * worth touching; tenancy is enforced by RLS (`conversations_update`
-   * → `is_account_member(account_id, 'agent')`), so this can never reach
-   * another account's rows even though no account_id filter appears here.
-   * Deliberately clears ALL visible threads, not just the ones passing
-   * the current search/tab/tag filters — a "clear inbox" that silently
-   * left rows behind a filter the user forgot was active would be worse
-   * than useless.
-   */
-  const handleClearInbox = useCallback(async () => {
-    setClearingInbox(true);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("conversations")
-        .update({ unread_count: 0, archived_at: new Date().toISOString() })
-        .is("archived_at", null);
-
-      if (error) {
-        console.error("Failed to clear inbox:", {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-        });
-        toast.error(t("clearInboxError"));
-        return;
-      }
-
-      onMarkAllRead?.();
-      toast.success(t("clearInboxDone", { count: clearableConversations }));
-    } finally {
-      setClearingInbox(false);
-    }
-  }, [onMarkAllRead, t, clearableConversations]);
-
   const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
 
   return (
@@ -530,7 +559,6 @@ export function ConversationList({
         >
           {(
             [
-              { value: "all", label: t("tabAll") },
               { value: "people", label: t("tabContacts") },
               { value: "groups", label: t("tabGroups") },
             ] as { value: InboxAudience; label: string }[]
@@ -603,44 +631,99 @@ export function ConversationList({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {tags.length > 0 && (
+          {/* One panel for "whose is it" and "which tags". They are the
+              two questions an operator asks of the list, they are asked
+              together ("my open ones tagged urgent"), and neither has
+              enough options to earn a dropdown of its own in a 320px
+              column. The count on the trigger is the total of both, so
+              a filter can never be left on invisibly. */}
+          {(ownerOptions.length > 0 || tags.length > 0) && (
             <DropdownMenu>
               <DropdownMenuTrigger
                 className={cn(
                   "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  selectedTagIds.length > 0
+                  activeFilterCount > 0
                     ? "text-primary"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {t("tags")}
-                {selectedTagIds.length > 0 && (
+                <SlidersHorizontal className="h-3 w-3" />
+                {t("filters")}
+                {activeFilterCount > 0 && (
                   <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                    {selectedTagIds.length}
+                    {activeFilterCount}
                   </span>
                 )}
                 <ChevronDown className="h-3 w-3" />
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="start"
-                className="max-h-64 w-56 border-border bg-popover"
+                className="max-h-80 w-60 overflow-y-auto border-border bg-popover"
               >
-                {tags.map((t) => (
-                  <DropdownMenuCheckboxItem
-                    key={t.id}
-                    checked={selectedTagIds.includes(t.id)}
-                    onCheckedChange={() => toggleTag(t.id)}
-                    className="text-sm text-popover-foreground"
-                  >
-                    <span className="flex items-center gap-2">
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: t.color }}
-                      />
-                      <span className="truncate">{t.name}</span>
-                    </span>
-                  </DropdownMenuCheckboxItem>
-                ))}
+                {ownerOptions.length > 0 && (
+                  <>
+                    <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                      {t("ownerFilterHeading")}
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem
+                      onClick={() => setOwnerFilter("")}
+                      className={cn(
+                        "text-sm",
+                        ownerFilter === ""
+                          ? "text-primary"
+                          : "text-popover-foreground"
+                      )}
+                    >
+                      <span className="flex-1">{t("ownerFilterAll")}</span>
+                      {ownerFilter === "" && <Check className="ml-2 h-3 w-3" />}
+                    </DropdownMenuItem>
+                    {ownerOptions.map((opt) => (
+                      <DropdownMenuItem
+                        key={opt.value}
+                        onClick={() => setOwnerFilter(opt.value)}
+                        className={cn(
+                          "text-sm",
+                          ownerFilter === opt.value
+                            ? "text-primary"
+                            : "text-popover-foreground"
+                        )}
+                      >
+                        <span className="flex-1 truncate">{opt.label}</span>
+                        {ownerFilter === opt.value && (
+                          <Check className="ml-2 h-3 w-3 shrink-0" />
+                        )}
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                )}
+
+                {ownerOptions.length > 0 && tags.length > 0 && (
+                  <DropdownMenuSeparator className="bg-border" />
+                )}
+
+                {tags.length > 0 && (
+                  <>
+                    <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                      {t("tags")}
+                    </DropdownMenuLabel>
+                    {tags.map((tag) => (
+                      <DropdownMenuCheckboxItem
+                        key={tag.id}
+                        checked={selectedTagIds.includes(tag.id)}
+                        onCheckedChange={() => toggleTag(tag.id)}
+                        className="text-sm text-popover-foreground"
+                      >
+                        <span className="flex items-center gap-2">
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: tag.color }}
+                          />
+                          <span className="truncate">{tag.name}</span>
+                        </span>
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -691,29 +774,22 @@ export function ConversationList({
             </DropdownMenu>
           )}
 
-          {/* Clear inbox — marks every unread thread as read. `ml-auto`
-              pushes it to the far right of the filter row so it reads as
-              an action rather than another filter. Only shown when there
-              is something to clear and the role is allowed to write. */}
-          {canSendMessages && clearableConversations > 0 && (
-            <button
-              onClick={handleClearInbox}
-              disabled={clearingInbox}
-              title={t("clearInbox")}
-              className="ml-auto inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-            >
-              {clearingInbox ? (
-                <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-              ) : (
-                <CheckCheck className="h-3.5 w-3.5" />
-              )}
-              <span className="hidden sm:inline">{t("clearInbox")}</span>
-            </button>
-          )}
         </div>
 
         {hasContactFilters && (
           <div className="flex flex-wrap items-center gap-1">
+            {/* The owner filter gets a chip like the others: it hides
+                rows, so leaving it on unnoticed would look like
+                conversations had gone missing. */}
+            {ownerFilterLabel && (
+              <button
+                onClick={() => setOwnerFilter("")}
+                className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary hover:bg-primary/20"
+              >
+                <span className="max-w-28 truncate">{ownerFilterLabel}</span>
+                <X className="h-3 w-3" />
+              </button>
+            )}
             {selectedTagIds.map((id) => {
               const tag = tagsById.get(id);
               return (

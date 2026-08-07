@@ -573,30 +573,31 @@ function InboxPageInner() {
 
 
   /**
-   * Mirror a successful "clear inbox" locally. The server write already
-   * happened inside ConversationList; this reflects it now rather than
-   * waiting on one realtime UPDATE per cleared thread.
+   * Mirror "end handling" locally. The server write already happened
+   * inside MessageThread; this reflects it now rather than waiting on
+   * the realtime UPDATE to round-trip.
    *
-   * Clearing both reads and archives (migration 040), so the badges
-   * zero AND the rows leave the list. The archive stamp is only for the
-   * local mirror — the authoritative value is whatever the server wrote,
-   * which the next refetch reconciles.
+   * Archiving (migration 040) is what takes the row off the list —
+   * nothing is deleted, and the next inbound message clears the stamp
+   * again. The pane is closed as well: the thread the operator just
+   * finished is no longer in the list behind it, so leaving it open
+   * would strand them on a row they can no longer see.
    */
-  const handleMarkAllRead = useCallback(() => {
-    const archivedAt = new Date().toISOString();
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.archived_at
-          ? c
-          : { ...c, unread_count: 0, archived_at: archivedAt },
-      ),
-    );
-    setActiveConversation((prev) =>
-      prev && !prev.archived_at
-        ? { ...prev, unread_count: 0, archived_at: archivedAt }
-        : prev,
-    );
-  }, []);
+  const handleEndConversation = useCallback(
+    (conversationId: string, endedAt: string) => {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId
+            ? { ...c, unread_count: 0, archived_at: endedAt }
+            : c,
+        ),
+      );
+      setActiveConversation((prev) =>
+        prev?.id === conversationId ? null : prev,
+      );
+    },
+    [],
+  );
 
   /**
    * Open the thread that "new conversation" just resolved from a typed
@@ -763,7 +764,6 @@ function InboxPageInner() {
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
-            onMarkAllRead={handleMarkAllRead}
             onConversationStarted={handleConversationStarted}
           />
         </div>
@@ -793,6 +793,7 @@ function InboxPageInner() {
             onUpdateMessage={handleUpdateMessage}
             onStatusChange={handleStatusChange}
             onAssignChange={handleAssignChange}
+            onEndConversation={handleEndConversation}
             onBack={handleCloseConversation}
             resyncToken={resyncToken}
             onRefresh={handleManualRefresh}

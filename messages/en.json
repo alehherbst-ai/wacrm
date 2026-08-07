@@ -151,7 +151,6 @@
     "conversationList": {
       "searchPlaceholder": "Search conversations...",
       "audienceTabs": "Conversation type",
-      "tabAll": "All",
       "tabContacts": "Contacts",
       "tabGroups": "Groups",
       "filterAll": "All",
@@ -168,9 +167,6 @@
       "noConversations": "No conversations found",
       "noMessagesYet": "No messages yet",
       "unknown": "Unknown",
-      "clearInbox": "Clear inbox",
-      "clearInboxDone": "{count} {count, plural, =1 {conversation} other {conversations}} archived",
-      "clearInboxError": "Couldn't clear the inbox",
       "contactSuggestions": "Saved contacts",
       "startConversationHint": "Open conversation",
       "startingConversation": "Opening conversation...",
@@ -179,7 +175,13 @@
       "ownerYou": "You answer",
       "ownerOther": "{operator} answers",
       "ownerHandedOver": "You transferred it",
-      "ownerHouse": "House number"
+      "ownerHouse": "House number",
+      "filters": "Filters",
+      "ownerFilterHeading": "Answered by",
+      "ownerFilterAll": "All operators",
+      "ownerFilterMine": "My conversations",
+      "ownerFilterHouse": "House number",
+      "ownerFilterUnnamed": "Unnamed operator"
     },
     "newConversation": {
       "title": "New conversation",
@@ -221,10 +223,6 @@
       "statusOpen": "Open",
       "statusPending": "Pending",
       "statusClosed": "Closed",
-      "assign": "Assign",
-      "assigned": "Assigned",
-      "unassign": "Unassign",
-      "noTeammates": "No teammates available",
       "me": " (me)",
       "noMessagesYet": "No messages yet",
       "selectConversation": "Select a conversation",
@@ -249,7 +247,11 @@
       "ownerHandedOverHint": "You passed this conversation on. If the customer writes here again, it becomes yours once more.",
       "ownerHouseHint": "This conversation arrives on the house number, which belongs to nobody in particular.",
       "ownerUnknownHint": "This conversation isn't tied to any connected number.",
-      "transferShort": "Transfer"
+      "transferShort": "Transfer",
+      "endConversation": "End handling",
+      "endConversationHint": "Takes this conversation out of the inbox. Nothing is deleted — it comes back on its own if the customer writes again, and you can find it under the “Archived” filter.",
+      "endConversationDone": "Handling ended. The conversation left the inbox.",
+      "endConversationError": "Could not end the handling."
     },
     "composer": {
       "draftHint": "Tap the ✨ to draft a reply with AI — you can edit it before sending",
