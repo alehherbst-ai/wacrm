@@ -10,6 +10,7 @@ import {
 import { rowsEqual } from "@/lib/inbox/rows-equal";
 import {
   buildOwnerLookup,
+  handedOverToName,
   ownerView,
   type OwnerLookup,
 } from "@/lib/inbox/conversation-owner";
@@ -325,6 +326,15 @@ export function ConversationList({
     }
     return options;
   }, [ownerLookup, user?.id, t]);
+
+  // Lets a row follow `transferred_to_conversation_id` to the link that
+  // now holds the conversation, so the chip can name that person rather
+  // than just saying it moved. Costs nothing extra — these are the rows
+  // the list already has.
+  const conversationsById = useMemo(
+    () => new Map(conversations.map((c) => [c.id, c])),
+    [conversations],
+  );
 
   const filtered = useMemo(() => {
     let result = conversations;
@@ -853,6 +863,7 @@ export function ConversationList({
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
                 ownerLookup={ownerLookup}
+                conversationsById={conversationsById}
                 t={t}
               />
             ))}
@@ -921,6 +932,7 @@ interface ConversationItemProps {
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
   ownerLookup: OwnerLookup;
+  conversationsById: Map<string, Conversation>;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -937,6 +949,7 @@ function ConversationItem({
   isActive,
   onSelect,
   ownerLookup,
+  conversationsById,
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
@@ -970,12 +983,23 @@ function ConversationItem({
           text: t("ownerOther", { operator: owner.name }),
           tone: "text-amber-600 dark:text-amber-400",
         };
-      case "handedOver":
+      case "handedOver": {
+        // Name whoever holds it now. Falling back to "transferida" is
+        // honest when the destination is not among the loaded rows —
+        // claiming YOU transferred it would not be.
+        const holder = handedOverToName(
+          conversation,
+          ownerLookup,
+          conversationsById,
+        );
         return {
           Icon: ArrowRightLeft,
-          text: t("ownerHandedOver"),
+          text: holder
+            ? t("ownerOther", { operator: holder })
+            : t("ownerHandedOver"),
           tone: "text-amber-600 dark:text-amber-400",
         };
+      }
       case "house":
         return {
           Icon: Building2,

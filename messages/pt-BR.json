@@ -171,7 +171,7 @@
       "startError": "Não foi possível abrir a conversa.",
       "ownerYou": "Você atende",
       "ownerOther": "Atende: {operator}",
-      "ownerHandedOver": "Transferida por você",
+      "ownerHandedOver": "Transferida",
       "ownerHouse": "Número da casa",
       "filters": "Filtros",
       "ownerFilterHeading": "Quem atende",
@@ -250,7 +250,9 @@
       "pullDone": "Conversa puxada para o seu número.",
       "pullError": "Não foi possível puxar a conversa.",
       "ownerHandedOverTo": "Agora com {operator}",
-      "ownerHandedOverToHint": "Você passou esta conversa para {operator}, que é quem responde agora. Se o cliente escrever no seu número de novo, ela volta a ser sua."
+      "ownerHandedOverToHint": "Você passou esta conversa para {operator}, que é quem responde agora. Se o cliente escrever no seu número de novo, ela volta a ser sua.",
+      "observingHandedOverTo": "Esta conversa está com {operator}. Você está acompanhando.",
+      "observingHandedOverGeneric": "Esta conversa foi passada adiante. Você está acompanhando."
     },
     "composer": {
       "draftHint": "Toque no ✨ para rascunhar uma resposta com IA — você pode editar antes de enviar",

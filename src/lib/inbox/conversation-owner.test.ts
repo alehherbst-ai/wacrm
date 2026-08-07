@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 
-import { buildOwnerLookup, ownerView } from './conversation-owner';
+import {
+  buildOwnerLookup,
+  handedOverToName,
+  ownerView,
+} from './conversation-owner';
 
 const ME = 'user-me';
 const OTHER = 'user-other';
@@ -79,14 +83,26 @@ describe('ownerView', () => {
     expect(view).toEqual({ kind: 'handedOver' });
   });
 
-  // Someone else's hand-over is not my business: from here it is still
-  // their conversation, and their name is the useful answer.
-  it("keeps naming the colleague when THEY handed their conversation over", () => {
+  // Naming the number's owner here would name someone who is only
+  // watching — the person answering is at the other end of the
+  // hand-over.
+  it("reports a colleague's handed-over conversation as handed over", () => {
     const view = ownerView(
       conversation('c2', '2026-08-07T10:00:00Z'),
       lookup([{ id: 'c2', operator_user_id: OTHER }]),
     );
-    expect(view).toEqual({ kind: 'other', name: 'Bruno' });
+    expect(view).toEqual({ kind: 'handedOver' });
+  });
+
+  // The bug this rule was written for: a house-number conversation that
+  // an operator pulled showed "Número da casa" in the badge while the
+  // footer said it had been handed on and the composer was gone.
+  it('reports a handed-over HOUSE conversation as handed over, not house', () => {
+    const view = ownerView(
+      conversation('c3', '2026-08-07T10:00:00Z'),
+      lookup([{ id: 'c3', operator_user_id: null }]),
+    );
+    expect(view).toEqual({ kind: 'handedOver' });
   });
 
   it('falls back to unknown when the owner has no display name', () => {
@@ -106,5 +122,38 @@ describe('ownerView', () => {
       lookup([{ id: 'c1', operator_user_id: ME }], null),
     );
     expect(view).toEqual({ kind: 'other', name: 'Ana' });
+  });
+});
+
+describe('handedOverToName', () => {
+  const lk = lookup([
+    { id: 'c-house', operator_user_id: null },
+    { id: 'c-mine', operator_user_id: ME },
+  ]);
+
+  it('names the operator whose number now holds it', () => {
+    const byId = new Map([['dest', { whatsapp_config_id: 'c-mine' }]]);
+    const source = { transferred_to_conversation_id: 'dest' };
+    expect(handedOverToName(source, lk, byId)).toBe('Ana');
+  });
+
+  it('returns null when the destination link is not loaded', () => {
+    const byId = new Map<string, { whatsapp_config_id: string | null }>();
+    const source = { transferred_to_conversation_id: 'dest' };
+    expect(handedOverToName(source, lk, byId)).toBeNull();
+  });
+
+  it('returns null when nothing was handed over', () => {
+    const byId = new Map([['dest', { whatsapp_config_id: 'c-mine' }]]);
+    expect(
+      handedOverToName({ transferred_to_conversation_id: null }, lk, byId),
+    ).toBeNull();
+  });
+
+  // The house number has no operator, so there is no name to give.
+  it('returns null when the destination is the house number', () => {
+    const byId = new Map([['dest', { whatsapp_config_id: 'c-house' }]]);
+    const source = { transferred_to_conversation_id: 'dest' };
+    expect(handedOverToName(source, lk, byId)).toBeNull();
   });
 });

@@ -44,7 +44,10 @@ import {
   threadRole,
   type ChainSegment,
 } from "@/lib/inbox/transfer-chain";
-import { ownerView } from "@/lib/inbox/conversation-owner";
+import {
+  handedOverToName as resolveHandedOverToName,
+  ownerView,
+} from "@/lib/inbox/conversation-owner";
 import { TransferDialog } from "./transfer-dialog";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
@@ -405,15 +408,20 @@ export function MessageThread({
       // The badge refuses to say "you transferred it" and leave the
       // person unnamed — a conversation always has someone answering
       // it, and that someone is one link further down this chain.
-      const handedTo = chain.find((c) => c.id === handedOverToId);
-      const handedToOperator = handedTo?.whatsapp_config_id
-        ? operatorByConnection.get(handedTo.whatsapp_config_id)
-        : undefined;
       setHandedOverToName(
-        handedToOperator
-          ? (profiles.find((p) => p.user_id === handedToOperator)?.full_name ??
-              null)
-          : null,
+        resolveHandedOverToName(
+          { transferred_to_conversation_id: handedOverToId },
+          {
+            operatorByConnection,
+            nameByUserId: new Map(
+              profiles
+                .filter((p) => p.full_name)
+                .map((p) => [p.user_id, p.full_name as string]),
+            ),
+            currentUserId: null,
+          },
+          new Map(chain.map((c) => [c.id, c])),
+        ),
       );
 
       // A chain of one is the overwhelmingly common case — never
@@ -1521,7 +1529,11 @@ export function MessageThread({
         <div className="border-t border-border bg-card px-4 py-3">
           <p className="text-center text-xs text-muted-foreground">
             {role.reason === "handed-over"
-              ? t("observingHandedOver")
+              ? conversation.transferred_by_user_id === user?.id
+                ? t("observingHandedOver")
+                : handedOverToName
+                  ? t("observingHandedOverTo", { operator: handedOverToName })
+                  : t("observingHandedOverGeneric")
               : ownerName
                 ? t("observingOther", { operator: ownerName })
                 : t("observingUnknown")}

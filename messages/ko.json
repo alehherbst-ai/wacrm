@@ -171,7 +171,7 @@
       "startError": "대화를 열 수 없습니다.",
       "ownerYou": "내 담당",
       "ownerOther": "담당: {operator}",
-      "ownerHandedOver": "내가 이관함",
+      "ownerHandedOver": "이관됨",
       "ownerHouse": "공용 번호",
       "filters": "필터",
       "ownerFilterHeading": "담당",
@@ -250,7 +250,9 @@
       "pullDone": "대화를 내 번호로 가져왔습니다.",
       "pullError": "대화를 가져올 수 없습니다.",
       "ownerHandedOverTo": "현재 {operator} 담당",
-      "ownerHandedOverToHint": "이 대화를 {operator}님에게 넘겼으며 지금은 그분이 응답합니다. 고객이 내 번호로 다시 쓰면 다시 내 대화가 됩니다."
+      "ownerHandedOverToHint": "이 대화를 {operator}님에게 넘겼으며 지금은 그분이 응답합니다. 고객이 내 번호로 다시 쓰면 다시 내 대화가 됩니다.",
+      "observingHandedOverTo": "이 대화는 {operator}님이 맡고 있습니다. 지켜보는 중입니다.",
+      "observingHandedOverGeneric": "이 대화는 다른 사람에게 넘겨졌습니다. 지켜보는 중입니다."
     },
     "composer": {
       "draftHint": "✨를 눌러 AI로 답장 초안을 작성하세요 — 보내기 전에 수정할 수 있습니다",

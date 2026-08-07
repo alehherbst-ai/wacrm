@@ -43,12 +43,16 @@ export interface OwnerLookup {
 /**
  * Decide how to label this conversation's owner.
  *
- * `handedOver` outranks `me` deliberately: while the hand-over stands,
- * the person who transferred is watching, not answering, and telling
- * them "you own this" would contradict the missing composer. It only
- * applies to your own conversations — a colleague's thread that they
- * handed to a third person is still, from where you sit, simply
- * theirs, and naming them is the useful answer.
+ * `handedOver` outranks everything else, including whose number the
+ * thread lives on. While the hand-over stands, the person answering is
+ * at the OTHER end of it — so naming the number's owner would name
+ * somebody who is only watching.
+ *
+ * This is not hypothetical tidiness: a conversation that arrived on the
+ * house number and was then pulled by an operator was showing "Número
+ * da casa" in the badge while the footer said it had been handed on and
+ * the composer was gone. The screen contradicted itself, which is the
+ * exact failure the badge exists to prevent.
  */
 export function ownerView(
   conversation: Pick<Conversation, 'whatsapp_config_id' | 'handed_over_at'>,
@@ -66,15 +70,41 @@ export function ownerView(
     return { kind: 'unknown' };
   }
 
+  if (conversation.handed_over_at) return { kind: 'handedOver' };
+
   const ownerId = operatorByConnection.get(connectionId);
   if (!ownerId) return { kind: 'house' };
 
-  if (currentUserId && ownerId === currentUserId) {
-    return conversation.handed_over_at ? { kind: 'handedOver' } : { kind: 'me' };
-  }
+  if (currentUserId && ownerId === currentUserId) return { kind: 'me' };
 
   const name = nameByUserId.get(ownerId);
   return name ? { kind: 'other', name } : { kind: 'unknown' };
+}
+
+/**
+ * Name the operator a handed-over conversation is now with.
+ *
+ * Follows `transferred_to_conversation_id` to the next link and reads
+ * whose number THAT one lives on. `byId` is whatever set of
+ * conversations the caller already holds — the transfer chain in the
+ * thread, the loaded list in the sidebar — so this costs no extra
+ * fetch and simply returns null when the link isn't among them.
+ */
+export function handedOverToName(
+  conversation: Pick<Conversation, 'transferred_to_conversation_id'>,
+  lookup: OwnerLookup,
+  byId: Map<string, Pick<Conversation, 'whatsapp_config_id'>>,
+): string | null {
+  const destId = conversation.transferred_to_conversation_id;
+  if (!destId) return null;
+
+  const dest = byId.get(destId);
+  if (!dest?.whatsapp_config_id) return null;
+
+  const operator = lookup.operatorByConnection.get(dest.whatsapp_config_id);
+  if (!operator) return null;
+
+  return lookup.nameByUserId.get(operator) ?? null;
 }
 
 /**

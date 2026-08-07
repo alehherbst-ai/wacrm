@@ -171,7 +171,7 @@
       "startError": "Could not open the conversation.",
       "ownerYou": "You answer",
       "ownerOther": "{operator} answers",
-      "ownerHandedOver": "You transferred it",
+      "ownerHandedOver": "Transferred",
       "ownerHouse": "House number",
       "filters": "Filters",
       "ownerFilterHeading": "Answered by",
@@ -250,7 +250,9 @@
       "pullDone": "Conversation pulled to your number.",
       "pullError": "Could not pull the conversation.",
       "ownerHandedOverTo": "Now with {operator}",
-      "ownerHandedOverToHint": "You passed this conversation to {operator}, who answers it now. If the customer writes to your number again, it becomes yours once more."
+      "ownerHandedOverToHint": "You passed this conversation to {operator}, who answers it now. If the customer writes to your number again, it becomes yours once more.",
+      "observingHandedOverTo": "{operator} is handling this conversation. You're following it.",
+      "observingHandedOverGeneric": "This conversation was passed on. You're following it."
     },
     "composer": {
       "draftHint": "Tap the ✨ to draft a reply with AI — you can edit it before sending",
