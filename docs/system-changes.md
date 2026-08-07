@@ -6,6 +6,71 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-07] Duas correções achadas ao abrir a tela pela primeira vez
+
+> Contexto: até aqui, toda entrega de interface tinha sido verificada só por
+> `typecheck`, `build`, lint e testes — nenhuma delas alcança um erro que só
+> existe quando a tela renderiza. O usuário forneceu acesso ao navegador e as
+> duas correções abaixo apareceram em minutos.
+
+**Antes (1) — o selo se contradizia com o resto da tela.** Uma conversa que
+chegou no número da casa e depois foi puxada por um operador mostrava
+"Número da casa" no selo de titularidade, enquanto o rodapé logo abaixo
+dizia que ela tinha sido passada adiante e o campo de digitação não estava
+lá. O selo não nomeava ninguém — exatamente a falha que ele existe para
+evitar. Causa: `ownerView` resolvia *de quem é o número* antes de olhar
+`handed_over_at`, então o ramo do número da casa retornava primeiro e a
+entrega ficava invisível.
+
+**Antes (2) — quatro chaves de tradução chamadas e inexistentes.**
+`Inbox.messageThread.sendTemplateHint` lançava `MISSING_MESSAGE` no console
+em toda conversa vazia. A chave havia sido removida no commit `9e69010`,
+quando a integração com a Meta saiu e "modelos" deixaram de existir, mas a
+chamada ficou. Uma varredura pelo mesmo formato achou outras três, todas
+anteriores a este trabalho: `Inbox.bubble.template`,
+`Inbox.replyQuote.template` e `Automations.builder.delete`.
+
+**Depois:**
+- **Estar entregue passa a valer mais do que de quem é o número**, em todos
+  os casos. Enquanto a entrega está de pé, quem responde está do outro lado
+  dela; nomear o dono do número nomearia alguém que só observa.
+- **`handedOverToName`** segue `transferred_to_conversation_id` até o elo
+  que hoje segura a conversa e lê de quem é aquele número. Recebe o conjunto
+  de conversas que o chamador já tem em mãos — a cadeia na thread, as linhas
+  carregadas na lista — então não custa consulta nenhuma.
+- **O rodapé parou de afirmar autoria que não pode conhecer.** Dizia "Você
+  transferiu esta conversa" para qualquer observador, inclusive um gestor
+  olhando uma entrega feita por outra pessoa. Agora só diz isso quando
+  `transferred_by_user_id` é você; senão, nomeia quem está com ela.
+- **As quatro chaves foram restauradas** — mas não com o texto antigo: o
+  original mandava "enviar um modelo para iniciar a conversa", conceito que
+  não existe mais. O estado vazio agora pede a primeira mensagem.
+
+**Decisões que vale registrar:**
+1. **`t("delete", { defaultValue: "Delete" })` foi corrigido, não mantido.**
+   `defaultValue` é idioma do i18next; o next-intl não tem esse fallback e
+   lança do mesmo jeito. O argumento não fazia nada além de esconder o bug.
+2. **O texto do passo `close_conversation` das automações foi corrigido.**
+   Ele ainda prometia "define o status da conversa como fechada" como se
+   isso fosse visível. Não é mais — o texto agora diz isso e aponta para
+   "Encerrar atendimento".
+3. **Um caso que parece bug e não é:** uma conversa entregue a um destino
+   que hoje vive no número da casa mostra "Transferida", sem nome. É o
+   resultado honesto — o número da casa não tem operador para nomear. Isso
+   aparece nos dados desta conta porque números foram atribuídos e
+   reatribuídos durante os testes.
+
+**Resolvido:** as duas falhas passaram por `typecheck`, `build`, lint e 615
+testes sem serem notadas, porque nenhuma dessas verificações abre a tela.
+Foram encontradas na primeira sessão com navegador autenticado.
+
+Arquivos: `src/lib/inbox/conversation-owner.ts`,
+`src/lib/inbox/conversation-owner.test.ts`,
+`src/components/inbox/message-thread.tsx`,
+`src/components/inbox/conversation-list.tsx`,
+`src/components/automations/automation-builder.tsx`,
+`messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-07] Fim do status Aberta/Pendente/Fechada na caixa de entrada
 
 **Antes:** cada conversa carregava um status de fluxo — aberta, pendente
