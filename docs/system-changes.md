@@ -6,6 +6,51 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-07] A tela de WhatsApp passa a dizer QUAL número está conectado
+
+**Antes:** o card de conexão mostrava "Conectado" e nada mais. Isso bastava
+quando a conta tinha um número só; com uma linha por operador, "conectado"
+deixa a pergunta mais importante sem resposta — conectado a qual telefone?
+Não havia como saber pela interface, e o campo que o card tentava usar
+(`uazapi_instance_name`) está vazio em todas as conexões desta conta.
+
+**Depois:** o card mostra o número. Quando a instância não responde, ele diz
+isso em vez de simplesmente não mostrar nada.
+
+**Decisões que vale registrar:**
+1. **Nada no nosso schema sabe o número, e não é descuido.** O telefone é
+   escolhido no aparelho, na hora em que alguém escaneia o QR Code —
+   `whatsapp_config` guarda o id e o token da instância, não a linha atrás
+   deles. Só a UAZAPI pode responder.
+2. **O payload foi verificado contra uma instância real, não deduzido.** O
+   `/instance/status` devolve o número duas vezes: `instance.owner`
+   (`"554896274914"`, já limpo) e dentro de `status.jid`
+   (`"554896274914:14@s.whatsapp.net"`). O `owner` ganha; o jid é o plano B
+   e precisa perder o índice de dispositivo (`:14`, que muda quando um
+   segundo aparelho é vinculado) e o domínio de roteamento.
+3. **"Não consegui confirmar" é um estado próprio, não a ausência do
+   número.** Sem essa distinção o card mostraria "Conectado" e nada ao lado,
+   que é a coisa mais enganosa possível quando a conexão está morta — e é
+   exatamente o caso de duas das três conexões desta conta.
+
+**Encontrado no caminho, e não é código:** duas das três conexões respondem
+`401 Invalid token` na UAZAPI enquanto o banco ainda as registra como
+`connected`. Os dados de mensagens confirmam o efeito — o número da casa
+(token válido) recebeu mensagem às 20:21, os dois com token morto pararam às
+14:31 e às 12:58. O `UAZAPI_BASE_URL` aponta para `free.uazapi.com`, um
+servidor público de demonstração cujas instâncias expiram; isso já estava
+documentado neste arquivo como algo que voltaria a acontecer até migrar para
+um servidor próprio ou pago.
+
+**Resolvido:** pedido do usuário — "nesta tela, apareça qual é o número da
+conta do WhatsApp que está conectada".
+
+Arquivos: `src/lib/whatsapp/connected-number.ts` (novo),
+`src/lib/whatsapp/connected-number.test.ts` (novo),
+`src/lib/whatsapp/uazapi-api.ts`,
+`src/app/api/whatsapp/uazapi/status/route.ts`,
+`src/components/settings/uazapi-connect.tsx`, `messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-07] Duas correções achadas ao abrir a tela pela primeira vez
 
 > Contexto: até aqui, toda entrega de interface tinha sido verificada só por
