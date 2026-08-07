@@ -175,7 +175,11 @@
       "startConversationHint": "대화 열기",
       "startingConversation": "대화를 여는 중...",
       "startNotOnWhatsapp": "해당 연락처는 WhatsApp을 사용하지 않습니다.",
-      "startError": "대화를 열 수 없습니다."
+      "startError": "대화를 열 수 없습니다.",
+      "ownerYou": "내 담당",
+      "ownerOther": "담당: {operator}",
+      "ownerHandedOver": "내가 이관함",
+      "ownerHouse": "공용 번호"
     },
     "newConversation": {
       "title": "새 대화",
@@ -234,7 +238,18 @@
       "chainDivider": "여기부터가 내 응대입니다",
       "observingHandedOver": "이 대화를 이관했습니다. 지켜보는 중이며, 고객이 이 번호로 다시 쓰면 다시 담당하게 됩니다.",
       "observingOther": "이 대화는 {operator} 님의 번호에 속합니다. 지켜보는 중입니다.",
-      "observingUnknown": "이 대화는 다른 번호에 속합니다. 지켜보는 중입니다."
+      "observingUnknown": "이 대화는 다른 번호에 속합니다. 지켜보는 중입니다.",
+      "ownerLabel": "담당",
+      "ownerYou": "나",
+      "ownerHandedOver": "내가 이관함 — 지켜보는 중",
+      "ownerHouse": "공용 번호",
+      "ownerUnknown": "지정 안 됨",
+      "ownerYouHint": "이 대화는 내 번호로 들어옵니다. 나만 답장할 수 있습니다.",
+      "ownerOtherHint": "이 대화는 {operator}님의 번호로 들어옵니다. {operator}님만 답장할 수 있고, 나는 지켜봅니다.",
+      "ownerHandedOverHint": "이 대화를 넘겼습니다. 고객이 여기로 다시 쓰면 다시 내 대화가 됩니다.",
+      "ownerHouseHint": "이 대화는 특정 담당자가 없는 공용 번호로 들어옵니다.",
+      "ownerUnknownHint": "이 대화는 연결된 번호에 연결되어 있지 않습니다.",
+      "transferShort": "이관"
     },
     "composer": {
       "draftHint": "✨를 눌러 AI로 답장 초안을 작성하세요 — 보내기 전에 수정할 수 있습니다",
