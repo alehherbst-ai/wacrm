@@ -252,7 +252,8 @@
       "ownerHandedOverTo": "Now with {operator}",
       "ownerHandedOverToHint": "You passed this conversation to {operator}, who answers it now. If the customer writes to your number again, it becomes yours once more.",
       "observingHandedOverTo": "{operator} is handling this conversation. You're following it.",
-      "observingHandedOverGeneric": "This conversation was passed on. You're following it."
+      "observingHandedOverGeneric": "This conversation was passed on. You're following it.",
+      "startConversationHint": "Send the first message to get started."
     },
     "composer": {
       "draftHint": "Tap the ✨ to draft a reply with AI — you can edit it before sending",
@@ -291,7 +292,8 @@
       "interactiveReply": "[Interactive reply]",
       "unsupported": "[Unsupported message type]",
       "aiBadge": "AI",
-      "aiBadgeTitle": "Sent automatically by the AI assistant"
+      "aiBadgeTitle": "Sent automatically by the AI assistant",
+      "template": "Template"
     },
     "actions": {
       "reply": "Reply",
@@ -311,7 +313,8 @@
       "voiceMessage": "[Voice message]",
       "location": "[Location]",
       "message": "[Message]",
-      "cancelReply": "Cancel reply"
+      "cancelReply": "Cancel reply",
+      "template": "Template"
     },
     "sidebar": {
       "contactInfo": "Contact info",
@@ -927,8 +930,9 @@
         "matchType": "Match type",
         "matchContains": "Contains",
         "matchExact": "Exact",
-        "closeConversationHint": "Sets the conversation status to \"closed\". No configuration needed."
-      }
+        "closeConversationHint": "Marks the conversation as closed. That status no longer shows in the inbox — to take a conversation out of it, use “End handling”."
+      },
+      "delete": "Delete"
     }
   },
   "Flows": {

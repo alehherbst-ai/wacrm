@@ -252,7 +252,8 @@
       "ownerHandedOverTo": "현재 {operator} 담당",
       "ownerHandedOverToHint": "이 대화를 {operator}님에게 넘겼으며 지금은 그분이 응답합니다. 고객이 내 번호로 다시 쓰면 다시 내 대화가 됩니다.",
       "observingHandedOverTo": "이 대화는 {operator}님이 맡고 있습니다. 지켜보는 중입니다.",
-      "observingHandedOverGeneric": "이 대화는 다른 사람에게 넘겨졌습니다. 지켜보는 중입니다."
+      "observingHandedOverGeneric": "이 대화는 다른 사람에게 넘겨졌습니다. 지켜보는 중입니다.",
+      "startConversationHint": "첫 메시지를 보내 시작하세요."
     },
     "composer": {
       "draftHint": "✨를 눌러 AI로 답장 초안을 작성하세요 — 보내기 전에 수정할 수 있습니다",
@@ -291,7 +292,8 @@
       "interactiveReply": "[인터랙티브 응답]",
       "unsupported": "[지원되지 않는 메시지 형식]",
       "aiBadge": "AI",
-      "aiBadgeTitle": "AI 어시스턴트가 자동으로 전송함"
+      "aiBadgeTitle": "AI 어시스턴트가 자동으로 전송함",
+      "template": "템플릿"
     },
     "actions": {
       "reply": "답장",
@@ -311,7 +313,8 @@
       "voiceMessage": "[음성 메시지]",
       "location": "[위치]",
       "message": "[메시지]",
-      "cancelReply": "답장 취소"
+      "cancelReply": "답장 취소",
+      "template": "템플릿"
     },
     "sidebar": {
       "contactInfo": "연락처 정보",
@@ -927,8 +930,9 @@
         "matchType": "일치 유형",
         "matchContains": "포함",
         "matchExact": "정확히 일치",
-        "closeConversationHint": "대화 상태를 \"닫힘\"으로 설정합니다. 추가 설정이 필요 없습니다."
-      }
+        "closeConversationHint": "대화를 종료로 표시합니다. 이 상태는 더 이상 받은 편지함에 표시되지 않습니다 — 대화를 내리려면 “상담 종료”를 사용하세요."
+      },
+      "delete": "삭제"
     }
   },
   "Flows": {

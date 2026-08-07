@@ -1437,8 +1437,13 @@ export function MessageThread({
         ) : messages.length === 0 && inherited.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
             <p className="text-sm text-muted-foreground">{t("noMessagesYet")}</p>
+            {/* The old copy here said "send a template to start the
+                conversation" — a Meta-templates idea that stopped
+                existing when the project went UAZAPI-only. The key went
+                with it and the call did not, so this line threw
+                MISSING_MESSAGE into the console on every empty thread. */}
             <p className="text-xs text-muted-foreground">
-              {t("sendTemplateHint")}
+              {t("startConversationHint")}
             </p>
           </div>
         ) : (

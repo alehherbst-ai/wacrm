@@ -252,7 +252,8 @@
       "ownerHandedOverTo": "Agora com {operator}",
       "ownerHandedOverToHint": "Você passou esta conversa para {operator}, que é quem responde agora. Se o cliente escrever no seu número de novo, ela volta a ser sua.",
       "observingHandedOverTo": "Esta conversa está com {operator}. Você está acompanhando.",
-      "observingHandedOverGeneric": "Esta conversa foi passada adiante. Você está acompanhando."
+      "observingHandedOverGeneric": "Esta conversa foi passada adiante. Você está acompanhando.",
+      "startConversationHint": "Envie a primeira mensagem para começar."
     },
     "composer": {
       "draftHint": "Toque no ✨ para rascunhar uma resposta com IA — você pode editar antes de enviar",
@@ -291,7 +292,8 @@
       "interactiveReply": "[Resposta interativa]",
       "unsupported": "[Tipo de mensagem não suportado]",
       "aiBadge": "IA",
-      "aiBadgeTitle": "Enviado automaticamente pelo assistente de IA"
+      "aiBadgeTitle": "Enviado automaticamente pelo assistente de IA",
+      "template": "Modelo"
     },
     "actions": {
       "reply": "Responder",
@@ -311,7 +313,8 @@
       "voiceMessage": "[Mensagem de voz]",
       "location": "[Localização]",
       "message": "[Mensagem]",
-      "cancelReply": "Cancelar resposta"
+      "cancelReply": "Cancelar resposta",
+      "template": "Modelo"
     },
     "sidebar": {
       "contactInfo": "Informações do contato",
@@ -927,8 +930,9 @@
         "matchType": "Tipo de correspondência",
         "matchContains": "Contém",
         "matchExact": "Exata",
-        "closeConversationHint": "Define o status da conversa como \"fechada\". Nenhuma configuração necessária."
-      }
+        "closeConversationHint": "Marca a conversa como fechada. Esse status não aparece mais na caixa de entrada — para tirar a conversa da caixa, use “Encerrar atendimento”."
+      },
+      "delete": "Excluir"
     }
   },
   "Flows": {
