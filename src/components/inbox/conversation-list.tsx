@@ -39,6 +39,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -660,8 +661,14 @@ export function ConversationList({
                 align="start"
                 className="max-h-80 w-60 overflow-y-auto border-border bg-popover"
               >
+                {/* DropdownMenuGroup is REQUIRED around the label:
+                    DropdownMenuLabel is base-ui's Menu.GroupLabel, which
+                    THROWS at render without a Menu.Group ancestor and
+                    takes the whole page down with it rather than just
+                    the menu. Same trap as issue #336 in flow-canvas.tsx
+                    and the tag menu in contact-sidebar.tsx. */}
                 {ownerOptions.length > 0 && (
-                  <>
+                  <DropdownMenuGroup>
                     <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
                       {t("ownerFilterHeading")}
                     </DropdownMenuLabel>
@@ -694,7 +701,7 @@ export function ConversationList({
                         )}
                       </DropdownMenuItem>
                     ))}
-                  </>
+                  </DropdownMenuGroup>
                 )}
 
                 {ownerOptions.length > 0 && tags.length > 0 && (
@@ -702,7 +709,7 @@ export function ConversationList({
                 )}
 
                 {tags.length > 0 && (
-                  <>
+                  <DropdownMenuGroup>
                     <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
                       {t("tags")}
                     </DropdownMenuLabel>
@@ -722,7 +729,7 @@ export function ConversationList({
                         </span>
                       </DropdownMenuCheckboxItem>
                     ))}
-                  </>
+                  </DropdownMenuGroup>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
