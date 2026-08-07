@@ -6,6 +6,64 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-07] Quem atende a conversa passa a ser dito, não deduzido
+
+**Antes:** com o modelo de operadores no ar, cada conversa tem exatamente
+um operador que pode responder — é o dono do número em que ela vive. Mas a
+interface nunca dizia quem era. Dava para **deduzir por ausência**: se o
+campo de digitação não estava lá, a conversa era de outra pessoa. Isso tem
+dois defeitos. Um campo de digitação que some parece tela quebrada, não
+regra de negócio. E não dizia nada a quem *era* dono: justamente a pessoa
+que pode responder não recebia confirmação nenhuma de que responder era
+com ela. A única frase sobre o assunto era um texto cinza no rodapé da
+thread, mostrado **só para quem observava**. Na lista de conversas não
+havia sinal algum — só abrindo a conversa dava para descobrir de quem era.
+
+O botão de transferir tinha o mesmo problema de visibilidade: um ícone de
+14px, cinza, numa fileira de outros ícones cinzas do mesmo tamanho.
+
+**Depois:**
+- **Faixa de titularidade na thread**, logo abaixo do cabeçalho, sempre
+  visível e para todo mundo — dono ou observador. Diz "Quem atende" e o
+  nome, com cor e ícone por estado: sua (verde), de um colega nomeado
+  (âmbar), transferida por você (âmbar), número da casa, ou não definido.
+  Cada estado tem tooltip explicando a consequência, não só o rótulo —
+  "Só {operador} pode responder — você acompanha".
+- **Chip por linha na lista de conversas**, com a mesma resposta, para que
+  "essa é minha?" se resolva enquanto se rola a lista, sem abrir nada.
+- **Botão de transferir maior e destacado**: 36px em vez de 28, ícone de
+  18px em vez de 14, com fundo e borda na cor primária e o rótulo
+  "Transferir" ao lado do ícone a partir de `sm`.
+
+**Decisões que vale registrar:**
+1. **Um helper puro (`ownerView`) é a fonte única da regra**, usado pela
+   thread e pela lista. Sem isso as duas telas responderiam a mesma
+   pergunta por caminhos diferentes e acabariam divergindo.
+2. **O número da casa entra no mapa de conexões com valor vazio**, em vez
+   de ficar de fora. "É o número da casa" e "é uma conexão que ainda não
+   carreguei" são respostas diferentes, e um `Map` que omite a primeira
+   não consegue distingui-las.
+3. **A lista não desenha chip no estado indefinido.** Enquanto a consulta
+   de titularidade não volta, toda linha é indefinida; um chip dizendo
+   "não definido" em todas e trocando logo depois pisca feio. Na thread,
+   que é uma faixa só, ele aparece normalmente.
+4. **"Quem atende" em vez de "dono/dona da conversa"** — mesma ideia, sem
+   forçar concordância de gênero com uma pessoa cujo nome só se conhece em
+   tempo de execução. Trocar é uma linha em `messages/pt-BR.json`
+   (`Inbox.messageThread.ownerLabel`).
+
+**Resolvido:** pedido do usuário de deixar "extremamente explícito quem é
+a pessoa dona da conversa" e de tornar o ícone de transferência maior e
+mais aparente. O pano de fundo é a Etapa 1 dos operadores: assim que a
+conta passa a ter mais de um número, "de quem é esta conversa" vira a
+pergunta que se faz o dia inteiro, e ela não tinha resposta na tela.
+
+Arquivos: `src/lib/inbox/conversation-owner.ts` (novo),
+`src/lib/inbox/conversation-owner.test.ts` (novo),
+`src/components/inbox/message-thread.tsx`,
+`src/components/inbox/conversation-list.tsx`,
+`messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-06] Operadores — migrations aplicadas em produção e dois defeitos corrigidos
 
 > **Requer migration.** `supabase/migrations/046_operators_fix_unique_and_chain.sql`,

@@ -175,7 +175,11 @@
       "startConversationHint": "Abrir conversa",
       "startingConversation": "Abrindo conversa...",
       "startNotOnWhatsapp": "Esse contato não tem WhatsApp.",
-      "startError": "Não foi possível abrir a conversa."
+      "startError": "Não foi possível abrir a conversa.",
+      "ownerYou": "Você atende",
+      "ownerOther": "Atende: {operator}",
+      "ownerHandedOver": "Transferida por você",
+      "ownerHouse": "Número da casa"
     },
     "newConversation": {
       "title": "Nova conversa",
@@ -234,7 +238,18 @@
       "chainDivider": "Daqui para baixo é o seu atendimento",
       "observingHandedOver": "Você transferiu esta conversa. Está acompanhando — se o cliente escrever aqui de novo, ela volta a ser sua.",
       "observingOther": "Esta conversa é do número de {operator}. Você está acompanhando.",
-      "observingUnknown": "Esta conversa é de outro número. Você está acompanhando."
+      "observingUnknown": "Esta conversa é de outro número. Você está acompanhando.",
+      "ownerLabel": "Quem atende",
+      "ownerYou": "Você",
+      "ownerHandedOver": "Você transferiu — acompanhando",
+      "ownerHouse": "Número da casa",
+      "ownerUnknown": "Não definido",
+      "ownerYouHint": "Esta conversa chega no seu número. Só você pode responder.",
+      "ownerOtherHint": "Esta conversa chega no número de {operator}. Só {operator} pode responder — você acompanha.",
+      "ownerHandedOverHint": "Você passou esta conversa adiante. Se o cliente escrever aqui de novo, ela volta a ser sua.",
+      "ownerHouseHint": "Esta conversa chega no número da casa, que não é de ninguém em particular.",
+      "ownerUnknownHint": "Esta conversa não está ligada a nenhum número conectado.",
+      "transferShort": "Transferir"
     },
     "composer": {
       "draftHint": "Toque no ✨ para rascunhar uma resposta com IA — você pode editar antes de enviar",

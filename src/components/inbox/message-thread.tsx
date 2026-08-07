@@ -27,6 +27,10 @@ import {
   PanelRightClose,
   Users,
   ArrowRightLeft,
+  UserCheck,
+  Eye,
+  Building2,
+  CircleHelp,
 } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -53,6 +57,7 @@ import {
   threadRole,
   type ChainSegment,
 } from "@/lib/inbox/transfer-chain";
+import { ownerView } from "@/lib/inbox/conversation-owner";
 import { TransferDialog } from "./transfer-dialog";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
@@ -278,9 +283,15 @@ export function MessageThread({
         console.error("Failed to load connections:", error.message);
         return;
       }
+      // Every connection goes in, house numbers included — they map to
+      // the empty string. Leaving them out would make "the house
+      // number" and "a connection I haven't loaded" indistinguishable,
+      // and the ownership badge says something different for each.
+      // Consumers that only want a real operator still test for a
+      // falsy value, so this stays compatible with them.
       const map = new Map<string, string>();
       for (const row of data ?? []) {
-        if (row.operator_user_id) map.set(row.id, row.operator_user_id);
+        map.set(row.id, row.operator_user_id ?? "");
       }
       setOperatorByConnection(map);
     })();
@@ -954,11 +965,73 @@ export function MessageThread({
     return profiles.find((p) => p.user_id === operatorId)?.full_name ?? null;
   })();
 
+  // Who owns this conversation, stated outright rather than left to be
+  // inferred from whether a composer happens to be there. Shares its
+  // rule with the conversation list (`ownerView`), so the badge in the
+  // header and the chip in the list can never disagree.
+  const owner = ownerView(conversation, {
+    operatorByConnection,
+    nameByUserId: new Map(
+      profiles
+        .filter((p) => p.full_name)
+        .map((p) => [p.user_id, p.full_name as string]),
+    ),
+    currentUserId: user?.id ?? null,
+  });
+
+  const ownerBadge = (() => {
+    switch (owner.kind) {
+      case "me":
+        return {
+          Icon: UserCheck,
+          value: t("ownerYou"),
+          hint: t("ownerYouHint"),
+          // Green only for "you answer this". It is the one state that
+          // means act, and it must be readable across the room.
+          tone: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+          iconTone: "text-emerald-600 dark:text-emerald-400",
+        };
+      case "other":
+        return {
+          Icon: Eye,
+          value: owner.name,
+          hint: t("ownerOtherHint", { operator: owner.name }),
+          tone: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+          iconTone: "text-amber-600 dark:text-amber-400",
+        };
+      case "handedOver":
+        return {
+          Icon: ArrowRightLeft,
+          value: t("ownerHandedOver"),
+          hint: t("ownerHandedOverHint"),
+          tone: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+          iconTone: "text-amber-600 dark:text-amber-400",
+        };
+      case "house":
+        return {
+          Icon: Building2,
+          value: t("ownerHouse"),
+          hint: t("ownerHouseHint"),
+          tone: "border-border bg-muted text-foreground",
+          iconTone: "text-muted-foreground",
+        };
+      default:
+        return {
+          Icon: CircleHelp,
+          value: t("ownerUnknown"),
+          hint: t("ownerUnknownHint"),
+          tone: "border-border bg-muted text-muted-foreground",
+          iconTone: "text-muted-foreground",
+        };
+    }
+  })();
+
   // Groups are never transferable: a WhatsApp group lives on one
   // number and the person receiving it is not a member, so the thread
   // created for them could neither receive nor deliver anything.
   const canTransfer =
     canSendMessages && !contact.is_group && role.kind === "owner";
+  const OwnerIcon = ownerBadge.Icon;
   const currentStatus = STATUS_OPTIONS.find(
     (s) => s.value === conversation.status
   );
@@ -1078,9 +1151,20 @@ export function MessageThread({
               onClick={() => setTransferOpen(true)}
               aria-label={t("transferConversation")}
               title={t("transferConversation")}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              // Deliberately the loudest control in this row. Passing a
+              // conversation on is a real, occasional decision, and as a
+              // 14px glyph in a line of grey icons it was being missed;
+              // the other controls here are adjustments you can undo,
+              // this one moves the conversation to another person's
+              // number. Tinted, bordered, and labelled from `sm` up —
+              // the icon alone stays legible on a phone, where the row
+              // has no width to spare.
+              className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2.5 text-primary transition-colors hover:bg-primary/20 sm:px-3"
             >
-              <ArrowRightLeft className="h-3.5 w-3.5" />
+              <ArrowRightLeft className="h-[18px] w-[18px]" />
+              <span className="hidden text-xs font-semibold sm:inline">
+                {t("transferShort")}
+              </span>
             </button>
           )}
 
@@ -1206,6 +1290,34 @@ export function MessageThread({
             </button>
           )}
         </div>
+      </div>
+
+      {/* Whose conversation this is — stated outright, always, for
+          everyone.
+
+          It used to be inferable only by absence: no composer meant
+          somebody else's. That reads as a broken screen, and it told
+          the owner nothing at all — the person who CAN answer saw no
+          confirmation that answering was theirs to do. A conversation
+          has exactly one operator who can reply to it (the number it
+          lives on is theirs), so the screen says which one, by name,
+          above the messages instead of below them. */}
+      <div
+        title={ownerBadge.hint}
+        className={cn(
+          "flex items-center gap-2 border-b px-3 py-2 sm:px-4",
+          ownerBadge.tone,
+        )}
+      >
+        <OwnerIcon
+          className={cn("h-4 w-4 flex-shrink-0", ownerBadge.iconTone)}
+        />
+        <span className="flex-shrink-0 text-[10px] font-semibold uppercase tracking-wider opacity-70">
+          {t("ownerLabel")}
+        </span>
+        <span className="truncate text-sm font-semibold">
+          {ownerBadge.value}
+        </span>
       </div>
 
       {/* Messages Area */}

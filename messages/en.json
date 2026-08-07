@@ -175,7 +175,11 @@
       "startConversationHint": "Open conversation",
       "startingConversation": "Opening conversation...",
       "startNotOnWhatsapp": "That contact does not have WhatsApp.",
-      "startError": "Could not open the conversation."
+      "startError": "Could not open the conversation.",
+      "ownerYou": "You answer",
+      "ownerOther": "{operator} answers",
+      "ownerHandedOver": "You transferred it",
+      "ownerHouse": "House number"
     },
     "newConversation": {
       "title": "New conversation",
@@ -234,7 +238,18 @@
       "chainDivider": "Your part of the conversation starts here",
       "observingHandedOver": "You transferred this conversation. You're following it — if the customer writes here again, it comes back to you.",
       "observingOther": "This conversation belongs to {operator}'s number. You're following it.",
-      "observingUnknown": "This conversation belongs to another number. You're following it."
+      "observingUnknown": "This conversation belongs to another number. You're following it.",
+      "ownerLabel": "Answered by",
+      "ownerYou": "You",
+      "ownerHandedOver": "You transferred it — following",
+      "ownerHouse": "House number",
+      "ownerUnknown": "Not set",
+      "ownerYouHint": "This conversation arrives on your number. Only you can reply.",
+      "ownerOtherHint": "This conversation arrives on {operator}'s number. Only {operator} can reply — you're following it.",
+      "ownerHandedOverHint": "You passed this conversation on. If the customer writes here again, it becomes yours once more.",
+      "ownerHouseHint": "This conversation arrives on the house number, which belongs to nobody in particular.",
+      "ownerUnknownHint": "This conversation isn't tied to any connected number.",
+      "transferShort": "Transfer"
     },
     "composer": {
       "draftHint": "Tap the ✨ to draft a reply with AI — you can edit it before sending",

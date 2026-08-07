@@ -8,6 +8,11 @@ import {
   normalizeConversations,
 } from "@/lib/inbox/conversations";
 import { rowsEqual } from "@/lib/inbox/rows-equal";
+import {
+  buildOwnerLookup,
+  ownerView,
+  type OwnerLookup,
+} from "@/lib/inbox/conversation-owner";
 import { cn } from "@/lib/utils";
 import type { Contact, Conversation, ConversationStatus, Tag } from "@/types";
 import {
@@ -18,6 +23,10 @@ import {
   CheckCheck,
   Plus,
   MessageSquarePlus,
+  UserCheck,
+  Eye,
+  ArrowRightLeft,
+  Building2,
 } from "lucide-react";
 import { NewConversationDialog } from "./new-conversation-dialog";
 import { formatDistanceToNow } from "date-fns";
@@ -90,8 +99,49 @@ export function ConversationList({
   // `conversations_update` RLS policy (migration 017) gates on the
   // 'agent' role — the same gate `canSendMessages` encodes. Viewers
   // don't get the button rather than getting one that always fails.
-  const { canSendMessages } = useAuth();
-  
+  const { canSendMessages, user } = useAuth();
+
+  // Who owns each number, so every row can say who answers it without
+  // the agent having to open the thread to find out. Two small reads
+  // of tables that hold one row per connection and per teammate; they
+  // run once per mount, not per conversation.
+  const [ownerLookup, setOwnerLookup] = useState<OwnerLookup>(() =>
+    buildOwnerLookup({ connections: [], profiles: [], currentUserId: null }),
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    (async () => {
+      const [connectionsRes, profilesRes] = await Promise.all([
+        supabase.from("whatsapp_config").select("id, operator_user_id"),
+        supabase.from("profiles").select("user_id, full_name"),
+      ]);
+      if (cancelled) return;
+      if (connectionsRes.error || profilesRes.error) {
+        // Non-fatal: without the maps every row falls back to the
+        // neutral "not set" chip, which is honest. The list itself
+        // must not be held hostage to this.
+        console.error(
+          "Failed to load conversation owners:",
+          connectionsRes.error?.message ?? profilesRes.error?.message,
+        );
+        return;
+      }
+      setOwnerLookup(
+        buildOwnerLookup({
+          connections: connectionsRes.data ?? [],
+          profiles: profilesRes.data ?? [],
+          currentUserId: user?.id ?? null,
+        }),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
     { label: t("filterAll"), value: "all" },
     { label: t("filterUnread"), value: "unread" },
@@ -723,6 +773,7 @@ export function ConversationList({
                 conversation={conv}
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
+                ownerLookup={ownerLookup}
                 t={t}
               />
             ))}
@@ -790,6 +841,7 @@ interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
+  ownerLookup: OwnerLookup;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -805,6 +857,7 @@ function ConversationItem({
   conversation,
   isActive,
   onSelect,
+  ownerLookup,
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
@@ -813,6 +866,48 @@ function ConversationItem({
   const contactTags = contact?.tags ?? [];
   const inlineTags = contactTags.slice(0, MAX_INLINE_TAGS);
   const overflowTags = contactTags.length - inlineTags.length;
+
+  // Who answers this one, on the row itself — so "is this mine?" is
+  // answered while scanning, not after opening the thread. Same rule
+  // as the thread header (`ownerView`), so the two cannot disagree.
+  //
+  // `unknown` renders nothing on purpose. Until the lookup resolves,
+  // every row is unknown, and a chip that says "not set" on all of
+  // them for a moment and then flips would be worse than a chip that
+  // simply arrives. It is also the honest answer for a conversation
+  // tied to no number: there is no owner to name.
+  const owner = ownerView(conversation, ownerLookup);
+  const ownerChip = (() => {
+    switch (owner.kind) {
+      case "me":
+        return {
+          Icon: UserCheck,
+          text: t("ownerYou"),
+          tone: "text-emerald-600 dark:text-emerald-400",
+        };
+      case "other":
+        return {
+          Icon: Eye,
+          text: t("ownerOther", { operator: owner.name }),
+          tone: "text-amber-600 dark:text-amber-400",
+        };
+      case "handedOver":
+        return {
+          Icon: ArrowRightLeft,
+          text: t("ownerHandedOver"),
+          tone: "text-amber-600 dark:text-amber-400",
+        };
+      case "house":
+        return {
+          Icon: Building2,
+          text: t("ownerHouse"),
+          tone: "text-muted-foreground",
+        };
+      default:
+        return null;
+    }
+  })();
+  const OwnerChipIcon = ownerChip?.Icon;
 
   const handleClick = useCallback(() => {
     onSelect(conversation);
@@ -902,6 +997,17 @@ function ConversationItem({
             />
           </div>
         </div>
+        {ownerChip && OwnerChipIcon && (
+          <div
+            className={cn(
+              "mt-1 flex items-center gap-1 text-[10px] font-medium",
+              ownerChip.tone,
+            )}
+          >
+            <OwnerChipIcon className="h-3 w-3 shrink-0" />
+            <span className="truncate">{ownerChip.text}</span>
+          </div>
+        )}
       </div>
     </button>
   );
