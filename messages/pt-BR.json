@@ -251,7 +251,13 @@
       "endConversation": "Encerrar atendimento",
       "endConversationHint": "Tira esta conversa da caixa de entrada. Nada é apagado — ela volta sozinha se o cliente escrever de novo, e você a encontra no filtro “Arquivadas”.",
       "endConversationDone": "Atendimento encerrado. A conversa saiu da caixa.",
-      "endConversationError": "Não foi possível encerrar o atendimento."
+      "endConversationError": "Não foi possível encerrar o atendimento.",
+      "pullConversation": "Puxar conversa",
+      "pullConversationHint": "Assume este atendimento: a conversa passa a ser sua e continua no seu número, com todo o histórico visível. Quem atendia antes passa a acompanhar.",
+      "pullDone": "Conversa puxada para o seu número.",
+      "pullError": "Não foi possível puxar a conversa.",
+      "ownerHandedOverTo": "Agora com {operator}",
+      "ownerHandedOverToHint": "Você passou esta conversa para {operator}, que é quem responde agora. Se o cliente escrever no seu número de novo, ela volta a ser sua."
     },
     "composer": {
       "draftHint": "Toque no ✨ para rascunhar uma resposta com IA — você pode editar antes de enviar",

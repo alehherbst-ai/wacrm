@@ -23,6 +23,7 @@ import {
   PanelRightClose,
   Users,
   ArrowRightLeft,
+  HandGrab,
   UserCheck,
   Eye,
   Building2,
@@ -238,6 +239,9 @@ export function MessageThread({
   >(new Map());
   const [transferOpen, setTransferOpen] = useState(false);
   const [endingConversation, setEndingConversation] = useState(false);
+  const [pullingConversation, setPullingConversation] = useState(false);
+  // Name of the operator this thread was handed to, when it was.
+  const [handedOverToName, setHandedOverToName] = useState<string | null>(null);
 
   // Profiles are bounded by RLS to rows the current user is allowed to
   // see — today that's just the current user, but the dropdown keeps the
@@ -391,6 +395,7 @@ export function MessageThread({
    * transferred simply returns itself and this renders nothing.
    */
   const chainId = conversation?.transfer_chain_id ?? null;
+  const handedOverToId = conversation?.transferred_to_conversation_id ?? null;
   useEffect(() => {
     if (!conversationId || !chainId) {
       setInherited([]);
@@ -412,6 +417,22 @@ export function MessageThread({
       }
 
       const chain = (links ?? []) as Conversation[];
+
+      // Who is holding it now, when this thread has been handed on.
+      // The badge refuses to say "you transferred it" and leave the
+      // person unnamed — a conversation always has someone answering
+      // it, and that someone is one link further down this chain.
+      const handedTo = chain.find((c) => c.id === handedOverToId);
+      const handedToOperator = handedTo?.whatsapp_config_id
+        ? operatorByConnection.get(handedTo.whatsapp_config_id)
+        : undefined;
+      setHandedOverToName(
+        handedToOperator
+          ? (profiles.find((p) => p.user_id === handedToOperator)?.full_name ??
+              null)
+          : null,
+      );
+
       // A chain of one is the overwhelmingly common case — never
       // transferred. Nothing to inherit, and no second query.
       if (chain.length <= 1) {
@@ -462,7 +483,14 @@ export function MessageThread({
     };
     // `resyncToken` is what makes a reply the customer sent to the
     // previous operator's number appear here without a reload.
-  }, [conversationId, chainId, resyncToken, operatorByConnection, profiles]);
+  }, [
+    conversationId,
+    chainId,
+    handedOverToId,
+    resyncToken,
+    operatorByConnection,
+    profiles,
+  ]);
 
   // Reactions fetch — pulls the current state from the DB. Kept separate
   // from the channel subscription below so a `resyncToken` bump just
@@ -944,6 +972,42 @@ export function MessageThread({
     onEndConversation(conversation.id, endedAt);
   }, [conversation, onEndConversation, t]);
 
+  /**
+   * Take a conversation that is somebody else's — or the house
+   * number's, which is nobody's — and continue it from my own number.
+   *
+   * The mirror image of transferring, and a separate RPC for a reason:
+   * transferring requires being able to WRITE the conversation (you
+   * only pass on what you handle), while pulling requires being able
+   * to READ it (you take over what you can already see). That is what
+   * stops it being a side door out of the inbox scope — an operator
+   * scoped to their own number cannot see a colleague's thread, so
+   * there is nothing there for them to pull.
+   *
+   * The database decides all of that; this just reports what it said.
+   */
+  const handlePullConversation = useCallback(async () => {
+    if (!conversation) return;
+
+    setPullingConversation(true);
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("pull_conversation", {
+      p_conversation_id: conversation.id,
+    });
+    setPullingConversation(false);
+
+    if (error) {
+      console.error("Failed to pull the conversation:", error);
+      toast.error(error.message || t("pullError"));
+      return;
+    }
+
+    toast.success(t("pullDone"));
+    // Same landing as a transfer: the thread we want is the new one on
+    // our own number, not the one we just took it from.
+    if (typeof data === "string") onTransferred?.(data);
+  }, [conversation, onTransferred, t]);
+
   // Empty state — same WhatsApp-style doodle background as the active
   // thread below, so swapping between empty/selected doesn't change the
   // pattern under the user's eye.
@@ -1024,8 +1088,14 @@ export function MessageThread({
       case "handedOver":
         return {
           Icon: ArrowRightLeft,
-          value: t("ownerHandedOver"),
-          hint: t("ownerHandedOverHint"),
+          // Name whoever is answering it now; fall back to the state
+          // only when the chain hasn't resolved a name yet.
+          value: handedOverToName
+            ? t("ownerHandedOverTo", { operator: handedOverToName })
+            : t("ownerHandedOver"),
+          hint: handedOverToName
+            ? t("ownerHandedOverToHint", { operator: handedOverToName })
+            : t("ownerHandedOverHint"),
           tone: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
           iconTone: "text-amber-600 dark:text-amber-400",
         };
@@ -1066,6 +1136,29 @@ export function MessageThread({
   // to a row that is not theirs to close.
   const canEndConversation =
     canSendMessages && role.kind === "owner" && !conversation.archived_at;
+
+  // "Puxar conversa" — offered exactly when there is something to
+  // take: the thread is not already on my number, I have a number for
+  // it to land on, and it is not a group (a group lives on the number
+  // it was created in; pulling one would build a thread that can
+  // neither receive nor send).
+  //
+  // Note this deliberately covers the house number as well as another
+  // operator's: a conversation that arrived on the number nobody owns
+  // has no default owner, and this is how it gets one.
+  //
+  // The button only appears where the RPC would also allow it, but the
+  // RPC is the authority — being able to SEE this thread is already
+  // the permission to pull it, and that is checked in the database.
+  const iHaveANumber = myConnectionIds.size > 0;
+  const canPullConversation =
+    canSendMessages &&
+    !contact.is_group &&
+    iHaveANumber &&
+    !(
+      conversation.whatsapp_config_id &&
+      myConnectionIds.has(conversation.whatsapp_config_id)
+    );
 
   return (
     // `min-w-0` is load-bearing: the page already puts min-w-0 on the
@@ -1145,6 +1238,31 @@ export function MessageThread({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Take this conversation over. Sits first in the row
+              because it is the one control here that answers "this
+              isn't mine — make it mine", which is the question you
+              have while looking at somebody else's thread. It
+              disappears the moment the thread IS yours. */}
+          {canPullConversation && (
+            <button
+              type="button"
+              onClick={handlePullConversation}
+              disabled={pullingConversation}
+              aria-label={t("pullConversation")}
+              title={t("pullConversationHint")}
+              className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 text-emerald-700 transition-colors hover:bg-emerald-500/20 disabled:opacity-50 sm:px-3 dark:text-emerald-300"
+            >
+              {pullingConversation ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              ) : (
+                <HandGrab className="h-[18px] w-[18px]" />
+              )}
+              <span className="hidden text-xs font-semibold sm:inline">
+                {t("pullConversation")}
+              </span>
+            </button>
+          )}
+
           {/* Manual refresh — forces a refetch of the messages + the
               conversation list (the parent bumps its resyncToken). Useful
               when realtime missed an event or the agent just wants to be

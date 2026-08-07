@@ -251,7 +251,13 @@
       "endConversation": "End handling",
       "endConversationHint": "Takes this conversation out of the inbox. Nothing is deleted — it comes back on its own if the customer writes again, and you can find it under the “Archived” filter.",
       "endConversationDone": "Handling ended. The conversation left the inbox.",
-      "endConversationError": "Could not end the handling."
+      "endConversationError": "Could not end the handling.",
+      "pullConversation": "Pull conversation",
+      "pullConversationHint": "Take this one over: it becomes yours and continues on your number, with the whole history visible. Whoever handled it before starts following it instead.",
+      "pullDone": "Conversation pulled to your number.",
+      "pullError": "Could not pull the conversation.",
+      "ownerHandedOverTo": "Now with {operator}",
+      "ownerHandedOverToHint": "You passed this conversation to {operator}, who answers it now. If the customer writes to your number again, it becomes yours once more."
     },
     "composer": {
       "draftHint": "Tap the ✨ to draft a reply with AI — you can edit it before sending",

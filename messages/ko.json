@@ -251,7 +251,13 @@
       "endConversation": "상담 종료",
       "endConversationHint": "이 대화를 받은 편지함에서 내립니다. 삭제되지 않으며, 고객이 다시 쓰면 저절로 돌아오고 “보관됨” 필터에서 찾을 수 있습니다.",
       "endConversationDone": "상담을 종료했습니다. 대화가 편지함에서 내려갔습니다.",
-      "endConversationError": "상담을 종료할 수 없습니다."
+      "endConversationError": "상담을 종료할 수 없습니다.",
+      "pullConversation": "대화 가져오기",
+      "pullConversationHint": "이 상담을 맡습니다. 대화가 내 번호로 이어지며 전체 기록이 보입니다. 이전 담당자는 지켜보는 상태가 됩니다.",
+      "pullDone": "대화를 내 번호로 가져왔습니다.",
+      "pullError": "대화를 가져올 수 없습니다.",
+      "ownerHandedOverTo": "현재 {operator} 담당",
+      "ownerHandedOverToHint": "이 대화를 {operator}님에게 넘겼으며 지금은 그분이 응답합니다. 고객이 내 번호로 다시 쓰면 다시 내 대화가 됩니다."
     },
     "composer": {
       "draftHint": "✨를 눌러 AI로 답장 초안을 작성하세요 — 보내기 전에 수정할 수 있습니다",

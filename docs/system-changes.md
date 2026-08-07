@@ -6,6 +6,68 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-07] Puxar uma conversa para si, e a conversa sempre com um nome
+
+> **Requer migration.** `supabase/migrations/047_pull_conversation.sql`,
+> já aplicada em produção antes do deploy do código.
+
+**Antes:** o modelo de operadores só sabia **empurrar**.
+`transfer_conversation` entrega a conversa a outra pessoa, e quem entrega
+precisa ser quem atende. Faltava o movimento contrário — eu vejo uma
+conversa que está com outro operador, ou no número da casa (que não é de
+ninguém), e quero trazê-la para mim. Não havia como: o RPC de
+transferência **recusa explicitamente** ter o próprio autor como destino
+("That conversation is already yours"), então nem chamando com o próprio
+id dava para reaproveitá-lo.
+
+Havia também um ponto em que a tela deixava de nomear alguém: depois de
+transferir, o selo dizia "Você transferiu — acompanhando". Isso descreve
+um **estado**, não uma **pessoa**, e deixava a conversa aparentemente sem
+dono justamente no momento em que ela tinha acabado de ganhar um.
+
+**Depois:**
+- **Botão "Puxar conversa"** no cabeçalho da conversa, o primeiro da
+  linha. Aparece só quando há o que assumir: a conversa não está no seu
+  número, você tem um número para ela ir, e não é grupo. Ao puxar, a
+  conversa passa a viver no seu número com o histórico inteiro visível, e
+  quem atendia antes passa a acompanhar — exatamente a mesma mecânica da
+  transferência, no sentido inverso.
+- **O selo nomeia quem está com a conversa** depois de uma transferência:
+  "Agora com Bruno" no lugar de "Você transferiu — acompanhando".
+- **`pull_conversation()`** e o extrato da mecânica comum em
+  `handover_conversation_core()`, usada pelas duas operações.
+
+**Decisões que vale registrar:**
+1. **Empurrar exige ESCRITA; puxar exige LEITURA.** É a diferença que
+   define as duas operações, e o motivo de serem RPCs separados em vez de
+   um parâmetro novo. Você só passa adiante o que atende — um observador
+   não distribui trabalho alheio. Mas você assume o que já enxerga. A
+   consequência importante: puxar **não é uma porta lateral para fora do
+   escopo** — um operador de escopo 'own' não enxerga a conversa de um
+   colega e portanto não consegue puxá-la. Quem puxa livremente é o
+   gestor de escopo 'all', que já via tudo de qualquer forma.
+2. **Uma implementação da mecânica, não duas.** Criar/reaproveitar o
+   destino, fundir a cadeia, marcar a origem como entregue e pausar o
+   fluxo agora vivem em `handover_conversation_core`. Duas cópias
+   divergiriam no primeiro ajuste. O refactor foi validado com os **14
+   testes de comportamento da transferência rodados de novo** contra a
+   versão refatorada, antes de aplicar — nenhum mudou de resultado.
+3. **Puxar do número da casa é o caso de uso principal**, não um efeito
+   colateral. Uma conversa que chega no número que ninguém possui não tem
+   dono padrão — a regra "dono = operador do número que o cliente chamou"
+   não produz resposta quando o número não tem operador. Puxar é como ela
+   ganha um.
+
+**Resolvido:** pedido do usuário — um botão para assumir uma conversa que
+está sob domínio de outro operador, e a exigência de que a conversa sempre
+mostre um responsável com nome. A regra "dono = operador do número que o
+cliente chamou primeiro" já era o comportamento; o que faltava era a tela
+dizer isso em todos os estados, e uma saída para o caso em que o número não
+tem dono.
+
+Arquivos: `supabase/migrations/047_pull_conversation.sql` (novo),
+`src/components/inbox/message-thread.tsx`, `messages/{pt-BR,en,ko}.json`
+
 ## [2026-08-07] Caixa de entrada: encerrar um atendimento por vez, filtrar por operador, e menos controles
 
 **Antes:** quatro incômodos de uso na caixa de entrada, todos herdados de
