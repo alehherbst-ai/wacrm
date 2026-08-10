@@ -195,7 +195,10 @@ export function GoalGauge({ attainment, label, ariaLabel }: GaugeProps) {
           <path
             d={arcPath(cx, cy, r, startRad, startRad + sweep * drawn)}
             fill="none"
-            stroke={attainment >= 1 ? '#10b981' : '#3b82f6'}
+            // Violet below target to match the Meta card this gauge
+            // reports on; emerald once the target is met, the one place
+            // on this tab where colour genuinely tracks the data.
+            stroke={attainment >= 1 ? '#047857' : '#7c3aed'}
             strokeWidth={ringWidth}
             strokeLinecap="round"
           />

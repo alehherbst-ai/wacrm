@@ -17,8 +17,8 @@ import { formatCurrencyExact } from '@/lib/currency'
 import { loadSalesSummary, UNASSIGNED, type SalesSummary } from '@/lib/dashboard/sales'
 import type { LeadSource, Pipeline, Product, Profile } from '@/types'
 
-import { MetricCard } from '@/components/dashboard/metric-card'
 import { SkeletonCard, Skeleton } from '@/components/dashboard/skeleton'
+import { SalesMetricCard } from './sales-metric-card'
 import {
   BarList,
   ColumnChart,
@@ -199,13 +199,15 @@ export function SalesDashboard() {
             Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
           ) : (
             <>
-              <MetricCard
+              <SalesMetricCard
+                tone="emerald"
                 title={t('won')}
                 value={formatCurrencyExact(summary.wonValue, currency)}
                 icon={DollarSign}
                 subtitle={t('wonSubtitle', { count: summary.wonCount })}
               />
-              <MetricCard
+              <SalesMetricCard
+                tone="blue"
                 title={t('conversion')}
                 value={
                   summary.conversion == null
@@ -218,13 +220,15 @@ export function SalesDashboard() {
                   closed: summary.wonCount + summary.lostCount,
                 })}
               />
-              <MetricCard
+              <SalesMetricCard
+                tone="orange"
                 title={t('openValue')}
                 value={formatCurrencyExact(summary.openValue, currency)}
                 icon={Wallet}
                 subtitle={t('openSubtitle', { count: summary.openCount })}
               />
-              <MetricCard
+              <SalesMetricCard
+                tone="violet"
                 title={t('goal')}
                 value={
                   summary.goal == null
@@ -362,9 +366,13 @@ function Panel({
 }) {
   return (
     <section
-      className={`flex h-full flex-col rounded-xl border border-border bg-card ${className ?? ''}`}
+      className={`flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card ${className ?? ''}`}
     >
-      <header className="border-b border-border px-5 py-4">
+      {/* `card-2` is the theme's slightly-raised surface token. Giving
+          the header its own step separates the label from the chart in
+          both modes without introducing a colour of its own — the
+          charts below already carry all the colour this panel needs. */}
+      <header className="border-b border-border bg-card-2 px-5 py-4">
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
         {description && (
           <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
