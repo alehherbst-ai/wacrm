@@ -90,7 +90,9 @@
       "newTodayVsYesterday": "new today vs yesterday",
       "vsYesterday": "vs yesterday",
       "openDeals": "{count} open {count, plural, =1 {deal} other {deals}}",
-      "noChange": "No change {suffix}"
+      "noChange": "No change {suffix}",
+      "tabOverview": "Overview",
+      "tabSales": "Sales"
     },
     "quickActions": {
       "newContact": "New Contact",
@@ -141,6 +143,56 @@
     },
     "emptyState": {
       "title": "Not enough data yet"
+    },
+    "sales": {
+      "title": "Sales dashboard",
+      "description": "Revenue closed in the selected period, and what is still open today.",
+      "refresh": "Refresh",
+      "loadFailed": "Couldn't load the sales data. Try refreshing.",
+      "won": "Won",
+      "wonSubtitle": "{count, plural, =0 {no deals won} one {# deal won} other {# deals won}}",
+      "conversion": "Conversion",
+      "conversionSubtitle": "{won} of {closed} closed",
+      "openValue": "Open value",
+      "openSubtitle": "{count, plural, =0 {no open deals} one {# open deal} other {# open deals}}",
+      "goal": "Goal",
+      "goalSubtitle": "Target for the period",
+      "goalMissing": "No goal set",
+      "goalMissingHint": "Set this month's goal in Settings › Deals.",
+      "attainment": "% of goal",
+      "attainmentAria": "{percent}% of goal reached",
+      "ofGoal": "of goal",
+      "byProduct": "Sales by product",
+      "byProductDesc": "Won revenue, spread across each deal's line items.",
+      "byProductAria": "Revenue distribution by product",
+      "units": "{count, plural, one {# unit} other {# units}}",
+      "sellerRanking": "Seller ranking",
+      "sellerRankingDesc": "How much each person closed in the period.",
+      "bySource": "Lead source",
+      "bySourceDesc": "Where the won revenue came from.",
+      "openByStage": "Open by stage",
+      "openBySeller": "Open by seller",
+      "openNowDesc": "As of right now, not the period.",
+      "emptyPeriod": "Nothing closed in this period.",
+      "emptyOpen": "No open deals.",
+      "dealCount": "{count, plural, one {# deal} other {# deals}}",
+      "noProduct": "No product",
+      "noSource": "No source",
+      "unassigned": "Unassigned",
+      "noStage": "No stage",
+      "filters": {
+        "reference": "Reference",
+        "from": "From",
+        "to": "To",
+        "useRange": "Custom range",
+        "useMonth": "By month",
+        "pipeline": "Pipeline",
+        "seller": "Seller",
+        "product": "Product",
+        "source": "Source",
+        "all": "All",
+        "reset": "Clear filters"
+      }
     }
   },
   "Inbox": {
@@ -695,7 +747,13 @@
       "toastMarkedLost": "Marked as lost",
       "toastReopened": "Deal reopened",
       "toastFailedDelete": "Failed to delete deal",
-      "toastDeleted": "Deal deleted"
+      "toastDeleted": "Deal deleted",
+      "source": "Lead source",
+      "noSource": "No source",
+      "useItemsTotal": "Use items total",
+      "overrideValue": "Edit value",
+      "valueDiverges": "Typed value differs from the items total ({total}).",
+      "toastFailedItems": "The deal was saved, but its products weren't. Reopen it and try again."
     },
     "settings": {
       "managePipeline": "Manage Pipeline",
@@ -735,6 +793,18 @@
       "lostThisMonth": "Lost This Month",
       "lostThisMonthTooltip": "Deals marked as Lost since the first day of the current month.",
       "howCalculated": "How {label} is calculated"
+    },
+    "products": {
+      "label": "Deal products",
+      "total": "Total:",
+      "emptyCatalogue": "No products yet.",
+      "emptyCatalogueLink": "Add products",
+      "selectProduct": "Select a product",
+      "archivedSuffix": "(archived)",
+      "removeItem": "Remove {name}",
+      "quantity": "Quantity",
+      "unitPrice": "Unit price",
+      "addItem": "Add product"
     }
   },
   "Automations": {
@@ -1293,7 +1363,7 @@
       "whatsapp": "WhatsApp",
       "quick-replies": "Quick replies",
       "fields": "Fields & tags",
-      "deals": "Deals & currency",
+      "deals": "Deals & products",
       "members": "Team members",
       "api": "API keys"
     },
@@ -1503,6 +1573,81 @@
       "mineTitle": "My WhatsApp number",
       "mineDescription": "Pair your own number by scanning the QR code with your phone. Conversations arriving on it appear in your inbox only, and your replies go out from it.",
       "numberUnreachable": "Could not confirm the number with UAZAPI. The connection may have expired — use “Check / repair connection”."
+    },
+    "products": {
+      "title": "Products",
+      "description": "The catalogue behind deal line items and the sales-by-product chart.",
+      "empty": "No products yet.",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g. Room booking",
+      "priceLabel": "Suggested price",
+      "add": "Add",
+      "archive": "Archive",
+      "restore": "Restore",
+      "delete": "Delete",
+      "archivedBadge": "Archived",
+      "showArchived": "Show archived ({count})",
+      "hideArchived": "Hide archived",
+      "archiveAria": "Archive {name}",
+      "restoreAria": "Restore {name}",
+      "deleteAria": "Delete {name}",
+      "created": "Product created.",
+      "archived": "Product archived.",
+      "restored": "Product restored.",
+      "deleted": "Product deleted.",
+      "duplicateName": "A product with that name already exists.",
+      "createFailed": "Couldn't create the product.",
+      "updateFailed": "Couldn't update the product.",
+      "deleteFailed": "Couldn't delete the product.",
+      "deleteInUse": "This product has been sold and can't be deleted — archive it to drop it from the picker without erasing history.",
+      "loadFailed": "Couldn't load the products.",
+      "notLinked": "Your account isn't linked to a workspace yet.",
+      "adminOnly": "Only admins can change the catalogue."
+    },
+    "leadSources": {
+      "title": "Lead sources",
+      "description": "Where deals come from. Drives the source breakdown on the sales dashboard.",
+      "empty": "No sources yet.",
+      "placeholder": "e.g. Referral",
+      "add": "Add",
+      "colors": {
+        "red": "Red",
+        "orange": "Orange",
+        "amber": "Amber",
+        "emerald": "Emerald",
+        "cyan": "Cyan",
+        "blue": "Blue",
+        "violet": "Violet",
+        "pink": "Pink"
+      },
+      "useColor": "Use {color}",
+      "created": "Source created.",
+      "deleted": "Source deleted.",
+      "duplicateName": "A source with that name already exists.",
+      "createFailed": "Couldn't create the source.",
+      "deleteFailed": "Couldn't delete the source.",
+      "loadFailed": "Couldn't load the sources.",
+      "notLinked": "Your account isn't linked to a workspace yet.",
+      "adminOnly": "Only admins can change the sources.",
+      "deleteAria": "Delete {name}",
+      "deleteTitle": "Delete source",
+      "deleteConfirm": "Delete \"{name}\"? Deals that came through it stay — they just lose their attribution.",
+      "cancel": "Cancel",
+      "deleting": "Deleting..."
+    },
+    "goals": {
+      "title": "Monthly goals",
+      "description": "The account goal drives the dashboard gauge; per-seller goals say who is on pace.",
+      "month": "Month",
+      "accountGoal": "Account goal",
+      "accountGoalHint": "Used when no seller is filtered.",
+      "perSeller": "Per seller",
+      "save": "Save goals",
+      "saving": "Saving...",
+      "saved": "Goals saved.",
+      "saveFailed": "Couldn't save every goal.",
+      "notLinked": "Your account isn't linked to a workspace yet.",
+      "adminOnly": "Only admins can set goals."
     }
   }
 }

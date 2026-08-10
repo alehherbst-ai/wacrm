@@ -90,7 +90,9 @@
       "newTodayVsYesterday": "novos hoje vs. ontem",
       "vsYesterday": "vs. ontem",
       "openDeals": "{count} {count, plural, =1 {negócio aberto} other {negócios abertos}}",
-      "noChange": "Sem alteração {suffix}"
+      "noChange": "Sem alteração {suffix}",
+      "tabOverview": "Visão geral",
+      "tabSales": "Vendas"
     },
     "quickActions": {
       "newContact": "Novo contato",
@@ -141,6 +143,56 @@
     },
     "emptyState": {
       "title": "Ainda não há dados suficientes"
+    },
+    "sales": {
+      "title": "Dashboard de vendas",
+      "description": "Receita fechada no período selecionado e o que ainda está em aberto hoje.",
+      "refresh": "Atualizar",
+      "loadFailed": "Não foi possível carregar os dados de vendas. Tente atualizar.",
+      "won": "Ganho",
+      "wonSubtitle": "{count, plural, =0 {nenhum negócio ganho} one {# negócio ganho} other {# negócios ganhos}}",
+      "conversion": "Conversão",
+      "conversionSubtitle": "{won} de {closed} fechados",
+      "openValue": "Valor em aberto",
+      "openSubtitle": "{count, plural, =0 {nenhuma oportunidade aberta} one {# oportunidade aberta} other {# oportunidades abertas}}",
+      "goal": "Meta",
+      "goalSubtitle": "Meta do período",
+      "goalMissing": "Sem meta definida",
+      "goalMissingHint": "Defina a meta do mês em Configurações › Negócios.",
+      "attainment": "% da meta",
+      "attainmentAria": "{percent}% da meta atingida",
+      "ofGoal": "da meta",
+      "byProduct": "Vendas por produto",
+      "byProductDesc": "Receita ganha, distribuída entre os itens de cada negócio.",
+      "byProductAria": "Distribuição da receita por produto",
+      "units": "{count, plural, one {# un.} other {# un.}}",
+      "sellerRanking": "Ranking de vendedores",
+      "sellerRankingDesc": "Quanto cada pessoa fechou no período.",
+      "bySource": "Origem do lead",
+      "bySourceDesc": "De onde veio a receita ganha.",
+      "openByStage": "Aberto por etapa",
+      "openBySeller": "Aberto por vendedor",
+      "openNowDesc": "Situação de agora, não do período.",
+      "emptyPeriod": "Nada fechado neste período.",
+      "emptyOpen": "Nenhum negócio em aberto.",
+      "dealCount": "{count, plural, one {# negócio} other {# negócios}}",
+      "noProduct": "Sem produto",
+      "noSource": "Sem origem",
+      "unassigned": "Sem responsável",
+      "noStage": "Sem etapa",
+      "filters": {
+        "reference": "Referência",
+        "from": "De",
+        "to": "Até",
+        "useRange": "Período livre",
+        "useMonth": "Por mês",
+        "pipeline": "Pipeline",
+        "seller": "Vendedor",
+        "product": "Produto",
+        "source": "Origem",
+        "all": "Todos",
+        "reset": "Limpar filtros"
+      }
     }
   },
   "Inbox": {
@@ -695,7 +747,13 @@
       "toastMarkedLost": "Marcado como perdido",
       "toastReopened": "Negócio reaberto",
       "toastFailedDelete": "Falha ao excluir negócio",
-      "toastDeleted": "Negócio excluído"
+      "toastDeleted": "Negócio excluído",
+      "source": "Origem do lead",
+      "noSource": "Sem origem",
+      "useItemsTotal": "Usar soma dos itens",
+      "overrideValue": "Editar valor",
+      "valueDiverges": "Valor digitado difere da soma dos itens ({total}).",
+      "toastFailedItems": "O negócio foi salvo, mas os produtos não. Reabra e tente de novo."
     },
     "settings": {
       "managePipeline": "Gerenciar funil",
@@ -735,6 +793,18 @@
       "lostThisMonth": "Perdidos este mês",
       "lostThisMonthTooltip": "Negócios marcados como Perdido desde o primeiro dia do mês atual.",
       "howCalculated": "Como {label} é calculado"
+    },
+    "products": {
+      "label": "Produtos do negócio",
+      "total": "Total:",
+      "emptyCatalogue": "Nenhum produto cadastrado ainda.",
+      "emptyCatalogueLink": "Cadastrar produtos",
+      "selectProduct": "Selecione um produto",
+      "archivedSuffix": "(arquivado)",
+      "removeItem": "Remover {name}",
+      "quantity": "Quantidade",
+      "unitPrice": "Preço unitário",
+      "addItem": "Adicionar produto"
     }
   },
   "Automations": {
@@ -1293,7 +1363,7 @@
       "whatsapp": "WhatsApp",
       "quick-replies": "Respostas rápidas",
       "fields": "Campos e tags",
-      "deals": "Negócios e moeda",
+      "deals": "Negócios e produtos",
       "members": "Membros da equipe",
       "api": "Chaves de API"
     },
@@ -1503,6 +1573,81 @@
       "mineTitle": "Meu número de WhatsApp",
       "mineDescription": "Conecte o seu próprio número escaneando o QR Code pelo celular. As conversas que chegarem nele aparecem só na sua caixa de entrada, e as suas respostas saem por ele.",
       "numberUnreachable": "Não foi possível confirmar o número com a UAZAPI. A conexão pode ter expirado — use “Verificar / reparar conexão”."
+    },
+    "products": {
+      "title": "Produtos",
+      "description": "O catálogo que alimenta os itens de cada negócio e o gráfico de vendas por produto.",
+      "empty": "Nenhum produto cadastrado ainda.",
+      "nameLabel": "Nome",
+      "namePlaceholder": "Ex.: Reserva de quarto",
+      "priceLabel": "Preço sugerido",
+      "add": "Adicionar",
+      "archive": "Arquivar",
+      "restore": "Reativar",
+      "delete": "Excluir",
+      "archivedBadge": "Arquivado",
+      "showArchived": "Mostrar arquivados ({count})",
+      "hideArchived": "Ocultar arquivados",
+      "archiveAria": "Arquivar {name}",
+      "restoreAria": "Reativar {name}",
+      "deleteAria": "Excluir {name}",
+      "created": "Produto criado.",
+      "archived": "Produto arquivado.",
+      "restored": "Produto reativado.",
+      "deleted": "Produto excluído.",
+      "duplicateName": "Já existe um produto com esse nome.",
+      "createFailed": "Não foi possível criar o produto.",
+      "updateFailed": "Não foi possível atualizar o produto.",
+      "deleteFailed": "Não foi possível excluir o produto.",
+      "deleteInUse": "Este produto já foi vendido e não pode ser excluído — arquive-o para tirá-lo da lista sem apagar o histórico.",
+      "loadFailed": "Não foi possível carregar os produtos.",
+      "notLinked": "Sua conta ainda não está vinculada a um workspace.",
+      "adminOnly": "Somente administradores podem alterar o catálogo."
+    },
+    "leadSources": {
+      "title": "Origens de lead",
+      "description": "De onde os negócios vêm. Vira a quebra por origem no dashboard de vendas.",
+      "empty": "Nenhuma origem cadastrada ainda.",
+      "placeholder": "Ex.: Indicação",
+      "add": "Adicionar",
+      "colors": {
+        "red": "Vermelho",
+        "orange": "Laranja",
+        "amber": "Âmbar",
+        "emerald": "Esmeralda",
+        "cyan": "Ciano",
+        "blue": "Azul",
+        "violet": "Violeta",
+        "pink": "Rosa"
+      },
+      "useColor": "Usar a cor {color}",
+      "created": "Origem criada.",
+      "deleted": "Origem excluída.",
+      "duplicateName": "Já existe uma origem com esse nome.",
+      "createFailed": "Não foi possível criar a origem.",
+      "deleteFailed": "Não foi possível excluir a origem.",
+      "loadFailed": "Não foi possível carregar as origens.",
+      "notLinked": "Sua conta ainda não está vinculada a um workspace.",
+      "adminOnly": "Somente administradores podem alterar as origens.",
+      "deleteAria": "Excluir {name}",
+      "deleteTitle": "Excluir origem",
+      "deleteConfirm": "Excluir \"{name}\"? Os negócios que vieram dela continuam existindo, apenas ficam sem origem.",
+      "cancel": "Cancelar",
+      "deleting": "Excluindo..."
+    },
+    "goals": {
+      "title": "Metas mensais",
+      "description": "A meta da conta move o velocímetro do dashboard; as metas por vendedor dizem quem está no ritmo.",
+      "month": "Mês",
+      "accountGoal": "Meta da conta",
+      "accountGoalHint": "Usada quando nenhum vendedor está filtrado.",
+      "perSeller": "Por vendedor",
+      "save": "Salvar metas",
+      "saving": "Salvando...",
+      "saved": "Metas salvas.",
+      "saveFailed": "Não foi possível salvar todas as metas.",
+      "notLinked": "Sua conta ainda não está vinculada a um workspace.",
+      "adminOnly": "Somente administradores podem definir metas."
     }
   }
 }

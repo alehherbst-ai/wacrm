@@ -90,7 +90,9 @@
       "newTodayVsYesterday": "어제 대비 신규",
       "vsYesterday": "어제 대비",
       "openDeals": "진행 중인 딜 {count}건",
-      "noChange": "변동 없음 {suffix}"
+      "noChange": "변동 없음 {suffix}",
+      "tabOverview": "개요",
+      "tabSales": "매출"
     },
     "quickActions": {
       "newContact": "새 연락처",
@@ -141,6 +143,56 @@
     },
     "emptyState": {
       "title": "아직 데이터가 충분하지 않습니다"
+    },
+    "sales": {
+      "title": "매출 대시보드",
+      "description": "선택한 기간에 마감된 매출과 현재 진행 중인 거래입니다.",
+      "refresh": "새로고침",
+      "loadFailed": "매출 데이터를 불러오지 못했습니다. 새로고침해 보세요.",
+      "won": "성사",
+      "wonSubtitle": "{count, plural, other {거래 #건 성사}}",
+      "conversion": "전환율",
+      "conversionSubtitle": "마감 {closed}건 중 {won}건",
+      "openValue": "진행 중 금액",
+      "openSubtitle": "{count, plural, other {진행 중 거래 #건}}",
+      "goal": "목표",
+      "goalSubtitle": "기간 목표",
+      "goalMissing": "목표 미설정",
+      "goalMissingHint": "설정 › 거래에서 이번 달 목표를 설정하세요.",
+      "attainment": "목표 달성률",
+      "attainmentAria": "목표의 {percent}% 달성",
+      "ofGoal": "목표 대비",
+      "byProduct": "제품별 매출",
+      "byProductDesc": "성사된 매출을 거래 품목 기준으로 배분했습니다.",
+      "byProductAria": "제품별 매출 분포",
+      "units": "{count, plural, other {#개}}",
+      "sellerRanking": "영업 담당자 순위",
+      "sellerRankingDesc": "기간 내 담당자별 마감 금액입니다.",
+      "bySource": "리드 출처",
+      "bySourceDesc": "성사된 매출의 유입 경로입니다.",
+      "openByStage": "단계별 진행 중",
+      "openBySeller": "담당자별 진행 중",
+      "openNowDesc": "기간이 아닌 현재 시점 기준입니다.",
+      "emptyPeriod": "이 기간에 마감된 거래가 없습니다.",
+      "emptyOpen": "진행 중인 거래가 없습니다.",
+      "dealCount": "{count, plural, other {거래 #건}}",
+      "noProduct": "제품 없음",
+      "noSource": "출처 없음",
+      "unassigned": "담당자 없음",
+      "noStage": "단계 없음",
+      "filters": {
+        "reference": "기준 월",
+        "from": "시작",
+        "to": "종료",
+        "useRange": "기간 지정",
+        "useMonth": "월 단위",
+        "pipeline": "파이프라인",
+        "seller": "담당자",
+        "product": "제품",
+        "source": "출처",
+        "all": "전체",
+        "reset": "필터 초기화"
+      }
     }
   },
   "Inbox": {
@@ -695,7 +747,13 @@
       "toastMarkedLost": "실패로 표시했습니다",
       "toastReopened": "딜이 재개되었습니다",
       "toastFailedDelete": "딜을 삭제하지 못했습니다",
-      "toastDeleted": "딜이 삭제되었습니다"
+      "toastDeleted": "딜이 삭제되었습니다",
+      "source": "리드 출처",
+      "noSource": "출처 없음",
+      "useItemsTotal": "품목 합계 사용",
+      "overrideValue": "금액 직접 입력",
+      "valueDiverges": "입력한 금액이 품목 합계({total})와 다릅니다.",
+      "toastFailedItems": "거래는 저장됐지만 제품은 저장되지 않았습니다. 다시 열어 시도하세요."
     },
     "settings": {
       "managePipeline": "파이프라인 관리",
@@ -735,6 +793,18 @@
       "lostThisMonth": "이번 달 실패",
       "lostThisMonthTooltip": "이번 달 1일 이후 실패로 표시된 딜입니다.",
       "howCalculated": "{label} 계산 방법"
+    },
+    "products": {
+      "label": "거래 품목",
+      "total": "합계:",
+      "emptyCatalogue": "등록된 제품이 없습니다.",
+      "emptyCatalogueLink": "제품 등록",
+      "selectProduct": "제품 선택",
+      "archivedSuffix": "(보관됨)",
+      "removeItem": "{name} 제거",
+      "quantity": "수량",
+      "unitPrice": "단가",
+      "addItem": "제품 추가"
     }
   },
   "Automations": {
@@ -1293,7 +1363,7 @@
       "whatsapp": "WhatsApp",
       "quick-replies": "빠른 답장",
       "fields": "필드 & 태그",
-      "deals": "딜 & 통화",
+      "deals": "거래 및 제품",
       "members": "팀원",
       "api": "API 키"
     },
@@ -1503,6 +1573,81 @@
       "mineTitle": "내 WhatsApp 번호",
       "mineDescription": "휴대폰으로 QR 코드를 스캔해 본인 번호를 연결하세요. 이 번호로 오는 대화는 내 받은편지함에만 표시되고, 내 답장도 이 번호로 나갑니다.",
       "numberUnreachable": "UAZAPI에서 번호를 확인하지 못했습니다. 연결이 만료되었을 수 있습니다 — “연결 확인/복구”를 사용하세요."
+    },
+    "products": {
+      "title": "제품",
+      "description": "거래 품목과 제품별 매출 차트의 기준이 되는 카탈로그입니다.",
+      "empty": "등록된 제품이 없습니다.",
+      "nameLabel": "이름",
+      "namePlaceholder": "예: 객실 예약",
+      "priceLabel": "권장 가격",
+      "add": "추가",
+      "archive": "보관",
+      "restore": "복원",
+      "delete": "삭제",
+      "archivedBadge": "보관됨",
+      "showArchived": "보관 항목 보기 ({count})",
+      "hideArchived": "보관 항목 숨기기",
+      "archiveAria": "{name} 보관",
+      "restoreAria": "{name} 복원",
+      "deleteAria": "{name} 삭제",
+      "created": "제품이 생성되었습니다.",
+      "archived": "제품을 보관했습니다.",
+      "restored": "제품을 복원했습니다.",
+      "deleted": "제품을 삭제했습니다.",
+      "duplicateName": "같은 이름의 제품이 이미 있습니다.",
+      "createFailed": "제품을 생성하지 못했습니다.",
+      "updateFailed": "제품을 수정하지 못했습니다.",
+      "deleteFailed": "제품을 삭제하지 못했습니다.",
+      "deleteInUse": "판매 이력이 있는 제품은 삭제할 수 없습니다. 이력을 지우지 않고 목록에서 빼려면 보관하세요.",
+      "loadFailed": "제품을 불러오지 못했습니다.",
+      "notLinked": "계정이 아직 워크스페이스에 연결되지 않았습니다.",
+      "adminOnly": "관리자만 카탈로그를 변경할 수 있습니다."
+    },
+    "leadSources": {
+      "title": "리드 출처",
+      "description": "거래의 유입 경로입니다. 매출 대시보드의 출처 분석에 사용됩니다.",
+      "empty": "등록된 출처가 없습니다.",
+      "placeholder": "예: 추천",
+      "add": "추가",
+      "colors": {
+        "red": "빨강",
+        "orange": "주황",
+        "amber": "황색",
+        "emerald": "에메랄드",
+        "cyan": "청록",
+        "blue": "파랑",
+        "violet": "보라",
+        "pink": "분홍"
+      },
+      "useColor": "{color} 사용",
+      "created": "출처가 생성되었습니다.",
+      "deleted": "출처를 삭제했습니다.",
+      "duplicateName": "같은 이름의 출처가 이미 있습니다.",
+      "createFailed": "출처를 생성하지 못했습니다.",
+      "deleteFailed": "출처를 삭제하지 못했습니다.",
+      "loadFailed": "출처를 불러오지 못했습니다.",
+      "notLinked": "계정이 아직 워크스페이스에 연결되지 않았습니다.",
+      "adminOnly": "관리자만 출처를 변경할 수 있습니다.",
+      "deleteAria": "{name} 삭제",
+      "deleteTitle": "출처 삭제",
+      "deleteConfirm": "\"{name}\"을(를) 삭제할까요? 해당 거래는 유지되며 출처 정보만 사라집니다.",
+      "cancel": "취소",
+      "deleting": "삭제 중..."
+    },
+    "goals": {
+      "title": "월간 목표",
+      "description": "계정 목표는 대시보드 게이지에, 담당자별 목표는 진척 확인에 사용됩니다.",
+      "month": "월",
+      "accountGoal": "계정 목표",
+      "accountGoalHint": "담당자 필터가 없을 때 사용됩니다.",
+      "perSeller": "담당자별",
+      "save": "목표 저장",
+      "saving": "저장 중...",
+      "saved": "목표를 저장했습니다.",
+      "saveFailed": "일부 목표를 저장하지 못했습니다.",
+      "notLinked": "계정이 아직 워크스페이스에 연결되지 않았습니다.",
+      "adminOnly": "관리자만 목표를 설정할 수 있습니다."
     }
   }
 }
