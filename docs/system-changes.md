@@ -6,6 +6,52 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-10] Cartões de indicador coloridos na aba Vendas
+
+**Antes:** os quatro cartões do topo da aba Vendas usavam o `MetricCard`
+neutro — mesma superfície `bg-card` de todo o resto da tela. Num painel que
+é lido de relance, nada separava o número que importa do painel de gráfico
+ao lado; tudo tinha o mesmo peso visual.
+
+**Depois:** cada cartão ganhou fundo sólido saturado com texto branco —
+verde para Ganho, azul para Conversão, laranja para Valor em aberto,
+violeta para Meta. O velocímetro passou a usar violeta abaixo da meta, para
+casar com o cartão que ele reporta, e emerald ao atingi-la. O cabeçalho de
+cada painel de gráfico ganhou um degrau de superfície (`card-2`).
+
+**Decisões que vale registrar:**
+1. **Componente próprio, não uma prop no `MetricCard`.** Um `tone` opcional
+   no componente compartilhado faria a aba Visão geral herdar o tratamento
+   na primeira vez que alguém esquecesse o default. `SalesMetricCard` vive
+   ao lado de quem o usa.
+2. **Os contrastes foram medidos, não estimados.** Branco puro sobre as
+   quatro cores dá 5,48 / 5,17 / 5,18 / 5,70:1 — todas acima do mínimo AA
+   de 4,5:1 para texto corrido, então o rodapé de cada cartão é legível, não
+   só o número grande. A 90% de opacidade o laranja cai para 4,48:1, por
+   isso todo texto do cartão é branco puro e a hierarquia vem de tamanho e
+   peso.
+3. **Sem vermelho, apesar da referência ter.** No exemplo que motivou a
+   mudança, um cartão neutro é vermelho por decoração. Num painel de vendas
+   vermelho é lido como prejuízo, e um cartão que parece alarme por causa da
+   coluna em que caiu comunica algo falso.
+4. **Amarelo saiu por medição.** O amarelo da referência mede 2,15:1 com
+   texto branco. As alternativas eram texto escuro só naquele cartão,
+   quebrando a fileira, ou escurecer até virar outra cor — virou laranja
+   profundo.
+5. **Cor em hex, não classe de paleta.** Os números de contraste no comentário
+   do componente continuam verdadeiros mesmo se uma revisão do Tailwind mexer
+   no que `emerald-700` significa.
+6. **Os gráficos continuam em superfície neutra.** Já carregam cor própria por
+   produto, vendedor e origem; fundo saturado atrás faria as fatias brigarem
+   entre si.
+
+**Resolvido:** pedido de mais contraste nos cartões de informação do painel
+de vendas, com uma referência visual de painel de KPIs coloridos.
+
+Arquivos: `src/components/dashboard/sales/sales-metric-card.tsx`,
+`src/components/dashboard/sales/sales-dashboard.tsx`,
+`src/components/dashboard/sales/sales-charts.tsx`
+
 ## [2026-08-10] Dashboard de vendas no Painel, com produtos por negociação
 
 **Antes:** o Painel só tinha a visão operacional (conversas, tempo de
