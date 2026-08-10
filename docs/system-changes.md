@@ -6,6 +6,52 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-10] Responsável definido na chegada da mensagem, não na resposta
+
+**Antes:** a [entrada anterior](#2026-08-10-uma-linha-por-contato-e-fim-do-número-da-casa)
+fez a PRIMEIRA RESPOSTA reivindicar a conversa. Errado para o problema real:
+com quatro operadores olhando a mesma caixa, uma mensagem nova marcada como
+"Sem responsável" não diz a ninguém o que fazer com ela — o estado que devia
+orientar o time é justamente o que aparece por padrão. Pior, "primeira pessoa
+a conversar com aquele CLIENTE" foi implementado como "primeira pessoa a
+responder NAQUELA CONVERSA": um cliente conhecido que escrevia de novo voltava
+ao limbo, porque cada conversa nova nascia sem dono.
+
+**Depois:** a atribuição acontece quando a mensagem chega. Três passos, nesta
+ordem: o operador do número em que ela chegou; senão quem já atendeu aquele
+contato antes; senão ninguém.
+
+**Decisões que vale registrar:**
+1. **O número vence o histórico.** Se o cliente escreveu para a linha do
+   Bruno, era com o Bruno que ele queria falar — é o sinal mais forte que
+   existe sobre a intenção dele. É também o que faz "cada setor com seu
+   número" funcionar de forma determinística, que é o caso de uso pedido.
+2. **O histórico é por contato, não por conversa.** `ORDER BY created_at ASC`
+   sobre as conversas do contato: a pergunta é quem falou com ele da PRIMEIRA
+   vez, não quem falou por último.
+3. **Um gatilho substitui o da 049, não convive com ele.** Duas funções
+   disputando a mesma coluna seria uma corrida esperando para acontecer. A
+   mesma função passa a tratar mensagem de agente (quem responde assume) e de
+   cliente (resolve pela regra).
+4. **Sem round-robin.** Distribuir automaticamente entre operadores ociosos é
+   decisão de operação com consequência real — alguém recebe um cliente que
+   não conhece — e não é o que foi pedido. O pedido é que fique CLARO com quem
+   o cliente falava.
+5. **O caso residual continua sem resposta automática, e isso é honesto.**
+   Cliente novo escrevendo para uma linha que não é de ninguém não tem
+   responsável dedutível. A saída é de configuração: dar um operador à linha
+   (Configurações › WhatsApp › "Sua linha"). Inventar um dono aí seria pior
+   que admitir que não há um.
+6. **Backfill em duas passadas.** A primeira resolve pelo número, a segunda
+   herda do histórico — que só existe depois da primeira. Uma passada só
+   dependeria da ordem das linhas.
+
+**Resolvido:** relato de que mensagens novas chegavam como "Sem responsável"
+e que, com vários setores conectados, os operadores não saberiam como
+prosseguir.
+
+Arquivos: `supabase/migrations/050_responsible_on_arrival.sql`
+
 ## [2026-08-10] Uma linha por contato, e fim do "Número da casa"
 
 **Antes:** dois defeitos ligados pela mesma causa — a responsabilidade era
