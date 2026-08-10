@@ -67,6 +67,21 @@ export interface SendMessageParams {
   /** Structured payload for `messageType === 'interactive'`. */
   interactivePayload?: InteractiveMessagePayload | null;
   replyToMessageId?: string | null;
+  /**
+   * Who is sending, as `messages.sender_id`.
+   *
+   * The column has existed since migration 001 and this insert simply
+   * never filled it, so the CRM held no record of which teammate wrote
+   * which reply. Migration 049 turns that record into the thing that
+   * decides who a conversation belongs to — the first agent message
+   * claims it — so leaving it null now costs more than a missing
+   * byline.
+   *
+   * Optional because not every caller is a person: the transfer route
+   * posts its hand-over note through here under the service role, and
+   * an automated line should not claim the conversation.
+   */
+  senderUserId?: string | null;
 }
 
 export interface SendMessageResult {
@@ -166,6 +181,7 @@ export async function sendMessageToConversation(
     filename,
     interactivePayload,
     replyToMessageId,
+    senderUserId,
   } = params;
 
   if (!conversationId) {
@@ -367,6 +383,7 @@ export async function sendMessageToConversation(
     .insert({
       conversation_id: conversationId,
       sender_type: 'agent',
+      sender_id: senderUserId ?? null,
       content_type: messageType,
       content_text: interactiveBody ?? contentText ?? null,
       media_url: mediaUrl || null,

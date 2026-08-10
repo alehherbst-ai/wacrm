@@ -24,7 +24,7 @@ import {
   HandGrab,
   UserCheck,
   Eye,
-  Building2,
+  UserPlus,
   CircleHelp,
 } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
@@ -1082,11 +1082,11 @@ export function MessageThread({
           tone: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
           iconTone: "text-amber-600 dark:text-amber-400",
         };
-      case "house":
+      case "unassigned":
         return {
-          Icon: Building2,
-          value: t("ownerHouse"),
-          hint: t("ownerHouseHint"),
+          Icon: UserPlus,
+          value: t("ownerUnassigned"),
+          hint: t("ownerUnassignedHint"),
           tone: "border-border bg-muted text-foreground",
           iconTone: "text-muted-foreground",
         };

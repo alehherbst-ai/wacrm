@@ -224,13 +224,13 @@
       "ownerYou": "You answer",
       "ownerOther": "{operator} answers",
       "ownerHandedOver": "Transferred",
-      "ownerHouse": "House number",
       "filters": "Filters",
       "ownerFilterHeading": "Answered by",
       "ownerFilterAll": "All operators",
       "ownerFilterMine": "My conversations",
-      "ownerFilterHouse": "House number",
-      "ownerFilterUnnamed": "Unnamed operator"
+      "ownerFilterUnnamed": "Unnamed operator",
+      "ownerUnassigned": "Unassigned",
+      "ownerFilterUnassigned": "Unassigned"
     },
     "newConversation": {
       "title": "New conversation",
@@ -285,12 +285,10 @@
       "ownerLabel": "Answered by",
       "ownerYou": "You",
       "ownerHandedOver": "You transferred it — following",
-      "ownerHouse": "House number",
       "ownerUnknown": "Not set",
       "ownerYouHint": "This conversation arrives on your number. Only you can reply.",
       "ownerOtherHint": "This conversation arrives on {operator}'s number. Only {operator} can reply — you're following it.",
       "ownerHandedOverHint": "You passed this conversation on. If the customer writes here again, it becomes yours once more.",
-      "ownerHouseHint": "This conversation arrives on the house number, which belongs to nobody in particular.",
       "ownerUnknownHint": "This conversation isn't tied to any connected number.",
       "transferShort": "Transfer",
       "endConversation": "End handling",
@@ -307,7 +305,9 @@
       "observingHandedOverGeneric": "This conversation was passed on. You're following it.",
       "startConversationHint": "Send the first message to get started.",
       "ownerHandedOverNeutral": "Transferred — following",
-      "ownerHandedOverNeutralHint": "Somebody else passed this conversation on. You follow it, but whoever received it is the one who answers."
+      "ownerHandedOverNeutralHint": "Somebody else passed this conversation on. You follow it, but whoever received it is the one who answers.",
+      "ownerUnassigned": "Unassigned",
+      "ownerUnassignedHint": "Nobody has replied yet. Whoever answers first becomes responsible for this conversation."
     },
     "composer": {
       "draftHint": "Tap the ✨ to draft a reply with AI — you can edit it before sending",

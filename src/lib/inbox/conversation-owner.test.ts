@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildOwnerLookup,
   handedOverToName,
+  holderUserId,
   ownerView,
 } from './conversation-owner';
 
@@ -26,8 +27,9 @@ function lookup(
 function conversation(
   whatsapp_config_id: string | null,
   handed_over_at: string | null = null,
+  responsible_user_id: string | null = null,
 ) {
-  return { whatsapp_config_id, handed_over_at };
+  return { whatsapp_config_id, handed_over_at, responsible_user_id };
 }
 
 describe('ownerView', () => {
@@ -47,17 +49,58 @@ describe('ownerView', () => {
     expect(view).toEqual({ kind: 'other', name: 'Bruno' });
   });
 
-  it('reports the house number as nobody-in-particular', () => {
+  // The account's shared line used to answer this question with the
+  // name of a telephone ("Número da casa"). Nobody has replied yet, so
+  // the honest answer names nobody — and invites someone to take it.
+  it('reports an unclaimed conversation on the shared line as unassigned', () => {
     const view = ownerView(
       conversation('c3'),
       lookup([{ id: 'c3', operator_user_id: null }]),
     );
-    expect(view).toEqual({ kind: 'house' });
+    expect(view).toEqual({ kind: 'unassigned' });
+  });
+
+  // Migration 049: the first agent reply claims the conversation, and
+  // that claim is what the badge reports from then on.
+  it('names whoever replied first on the shared line', () => {
+    const view = ownerView(
+      conversation('c3', null, OTHER),
+      lookup([{ id: 'c3', operator_user_id: null }]),
+    );
+    expect(view).toEqual({ kind: 'other', name: 'Bruno' });
+  });
+
+  it('says it is mine when I am the one who replied first', () => {
+    const view = ownerView(
+      conversation('c3', null, ME),
+      lookup([{ id: 'c3', operator_user_id: null }]),
+    );
+    expect(view).toEqual({ kind: 'me' });
+  });
+
+  // The number says where a reply physically leaves from; the claim
+  // says whose conversation it is. When they disagree, the person wins
+  // — that is the whole point of the column.
+  it('prefers the recorded responsible over the number owner', () => {
+    const view = ownerView(
+      conversation('c2', null, ME),
+      lookup([{ id: 'c2', operator_user_id: OTHER }]),
+    );
+    expect(view).toEqual({ kind: 'me' });
+  });
+
+  it('still reports a handed-over conversation as handed over', () => {
+    const view = ownerView(
+      conversation('c2', '2026-08-07T10:00:00Z', ME),
+      lookup([{ id: 'c2', operator_user_id: OTHER }]),
+    );
+    expect(view).toEqual({ kind: 'handedOver' });
   });
 
   // The distinction the two-map shape exists to preserve: a connection
-  // we simply haven't loaded must not be reported as the house number.
-  it('does not mistake an unknown connection for the house number', () => {
+  // we simply haven't loaded must not be reported as unclaimed, which
+  // would invite a second person into somebody else's conversation.
+  it('does not mistake an unknown connection for an unclaimed one', () => {
     const view = ownerView(
       conversation('c-unloaded'),
       lookup([{ id: 'c1', operator_user_id: ME }]),
@@ -94,10 +137,10 @@ describe('ownerView', () => {
     expect(view).toEqual({ kind: 'handedOver' });
   });
 
-  // The bug this rule was written for: a house-number conversation that
-  // an operator pulled showed "Número da casa" in the badge while the
+  // The bug this rule was written for: a shared-line conversation that
+  // an operator pulled showed the line's label in the badge while the
   // footer said it had been handed on and the composer was gone.
-  it('reports a handed-over HOUSE conversation as handed over, not house', () => {
+  it('reports a handed-over shared-line conversation as handed over', () => {
     const view = ownerView(
       conversation('c3', '2026-08-07T10:00:00Z'),
       lookup([{ id: 'c3', operator_user_id: null }]),
@@ -150,10 +193,58 @@ describe('handedOverToName', () => {
     ).toBeNull();
   });
 
-  // The house number has no operator, so there is no name to give.
-  it('returns null when the destination is the house number', () => {
+  // The shared line has no operator, so there is no name to give.
+  it('returns null when the destination is the shared line', () => {
     const byId = new Map([['dest', { whatsapp_config_id: 'c-house' }]]);
     const source = { transferred_to_conversation_id: 'dest' };
     expect(handedOverToName(source, lk, byId)).toBeNull();
+  });
+});
+
+// The sidebar's "attended by" filter runs on this, while the badge
+// beside each row runs on ownerView. They have to agree, or picking a
+// teammate selects rows that carry somebody else's name.
+describe('holderUserId', () => {
+  it('returns the recorded responsible ahead of the number owner', () => {
+    expect(
+      holderUserId(
+        conversation('c2', null, ME),
+        lookup([{ id: 'c2', operator_user_id: OTHER }]),
+      ),
+    ).toBe(ME);
+  });
+
+  it('falls back to the operator of the number', () => {
+    expect(
+      holderUserId(
+        conversation('c2'),
+        lookup([{ id: 'c2', operator_user_id: OTHER }]),
+      ),
+    ).toBe(OTHER);
+  });
+
+  it('returns null for an unclaimed conversation on the shared line', () => {
+    expect(
+      holderUserId(
+        conversation('c3'),
+        lookup([{ id: 'c3', operator_user_id: null }]),
+      ),
+    ).toBeNull();
+  });
+
+  it('returns null while the conversation is handed over', () => {
+    expect(
+      holderUserId(
+        conversation('c2', '2026-08-07T10:00:00Z', ME),
+        lookup([{ id: 'c2', operator_user_id: OTHER }]),
+      ),
+    ).toBeNull();
+  });
+
+  it('agrees with ownerView on who "me" is', () => {
+    const lk = lookup([{ id: 'c2', operator_user_id: OTHER }]);
+    const conv = conversation('c2', null, ME);
+    expect(ownerView(conv, lk)).toEqual({ kind: 'me' });
+    expect(holderUserId(conv, lk)).toBe(ME);
   });
 });

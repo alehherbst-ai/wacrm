@@ -7,10 +7,12 @@ import {
   matchesContactFilters,
   normalizeConversations,
 } from "@/lib/inbox/conversations";
+import { chainKey, collapseChains } from "@/lib/inbox/collapse-chains";
 import { rowsEqual } from "@/lib/inbox/rows-equal";
 import {
   buildOwnerLookup,
   handedOverToName,
+  holderUserId,
   ownerView,
   type OwnerLookup,
 } from "@/lib/inbox/conversation-owner";
@@ -28,7 +30,7 @@ import {
   UserCheck,
   Eye,
   ArrowRightLeft,
-  Building2,
+  UserPlus,
 } from "lucide-react";
 import { NewConversationDialog } from "./new-conversation-dialog";
 import { formatDistanceToNow } from "date-fns";
@@ -86,11 +88,11 @@ type InboxFilter = "all" | "unread" | "archived";
 type InboxAudience = "people" | "groups";
 
 /**
- * Sentinel for "the house number" in the owner filter. A real option
- * value is a user id; the house number has no operator, so it needs a
- * value of its own that cannot collide with one.
+ * Sentinel for "nobody has picked this up yet" in the owner filter. A
+ * real option value is a user id, and an unclaimed conversation has
+ * none, so it needs a value of its own that cannot collide with one.
  */
-const HOUSE_OWNER = "__house__";
+const UNASSIGNED_OWNER = "__unassigned__";
 
 export function ConversationList({
   activeConversationId,
@@ -288,19 +290,22 @@ export function ConversationList({
 
   /**
    * Who can appear in the owner filter: every operator who actually
-   * owns a number, plus the house number when one exists. Built from
-   * the connections rather than from the team list, because a teammate
-   * with no number owns no conversations — offering them would be an
-   * option that always returns an empty list.
+   * owns a number, plus "unclaimed" when the account still has a line
+   * nobody owns. Built from the connections rather than from the team
+   * list, because a teammate with no number answers no conversations —
+   * offering them would be an option that always returns nothing.
    */
   const ownerOptions = useMemo(() => {
     const options: { value: string; label: string }[] = [];
-    let hasHouse = false;
+    // A connection with no operator is the account's shared line, and
+    // it is the only way a conversation ends up with nobody answering
+    // for it — everywhere else the number's owner answers by default.
+    let hasSharedLine = false;
     const seen = new Set<string>();
 
     for (const operator of ownerLookup.operatorByConnection.values()) {
       if (!operator) {
-        hasHouse = true;
+        hasSharedLine = true;
         continue;
       }
       if (seen.has(operator)) continue;
@@ -321,8 +326,11 @@ export function ConversationList({
       return a.label.localeCompare(b.label);
     });
 
-    if (hasHouse) {
-      options.push({ value: HOUSE_OWNER, label: t("ownerFilterHouse") });
+    if (hasSharedLine) {
+      options.push({
+        value: UNASSIGNED_OWNER,
+        label: t("ownerFilterUnassigned"),
+      });
     }
     return options;
   }, [ownerLookup, user?.id, t]);
@@ -336,8 +344,36 @@ export function ConversationList({
     [conversations],
   );
 
+  /**
+   * One row per contact, not one per conversation.
+   *
+   * A hand-over creates a second conversation rather than moving the
+   * first (migration 045), so a transferred contact came back from the
+   * query as two rows and was rendered as two — one holding the
+   * history with no way to reply, one holding the reply box and no
+   * history. Collapsing happens BEFORE the filters below so the merged
+   * row is what gets filtered: the owner filter has to match whoever
+   * answers now, not whoever answered before the transfer.
+   */
+  const collapsed = useMemo(
+    () => collapseChains(conversations),
+    [conversations],
+  );
+
+  /**
+   * The open thread may be any link of its chain — the thread view
+   * renders them all — while the list only shows the live one. Matching
+   * on the chain rather than the id keeps the row highlighted when the
+   * two differ.
+   */
+  const activeChainKey = useMemo(() => {
+    if (!activeConversationId) return null;
+    const active = conversations.find((c) => c.id === activeConversationId);
+    return active ? chainKey(active) : null;
+  }, [conversations, activeConversationId]);
+
   const filtered = useMemo(() => {
-    let result = conversations;
+    let result = collapsed;
 
     // Always applied now that the tabs are a strict either/or:
     // `is_group` is nullable on old rows — treat absent as "person",
@@ -361,20 +397,15 @@ export function ConversationList({
       }
     }
 
-    // Who answers it. Reads the same connection→operator map the
-    // ownership badge reads, so picking "Bruno" here selects exactly
-    // the rows that say "Atende: Bruno".
+    // Who answers it. Resolved through the same helpers the ownership
+    // badge uses, so picking "Bruno" here selects exactly the rows that
+    // say "Atende: Bruno" — the two cannot drift apart.
     if (ownerFilter) {
-      result = result.filter((c) => {
-        if (!c.whatsapp_config_id) return false;
-        const operator = ownerLookup.operatorByConnection.get(
-          c.whatsapp_config_id,
-        );
-        if (operator === undefined) return false;
-        return ownerFilter === HOUSE_OWNER
-          ? operator === ""
-          : operator === ownerFilter;
-      });
+      result = result.filter((c) =>
+        ownerFilter === UNASSIGNED_OWNER
+          ? ownerView(c, ownerLookup).kind === "unassigned"
+          : holderUserId(c, ownerLookup) === ownerFilter,
+      );
     }
 
     // Contact-based filters (tags via OR logic, exact company match).
@@ -426,7 +457,7 @@ export function ConversationList({
       return new Date(bt).getTime() - new Date(at).getTime();
     });
   }, [
-    conversations,
+    collapsed,
     audience,
     filter,
     search,
@@ -860,7 +891,7 @@ export function ConversationList({
               <ConversationItem
                 key={conv.id}
                 conversation={conv}
-                isActive={conv.id === activeConversationId}
+                isActive={chainKey(conv) === activeChainKey}
                 onSelect={handleSelect}
                 ownerLookup={ownerLookup}
                 conversationsById={conversationsById}
@@ -1000,10 +1031,10 @@ function ConversationItem({
           tone: "text-amber-600 dark:text-amber-400",
         };
       }
-      case "house":
+      case "unassigned":
         return {
-          Icon: Building2,
-          text: t("ownerHouse"),
+          Icon: UserPlus,
+          text: t("ownerUnassigned"),
           tone: "text-muted-foreground",
         };
       default:

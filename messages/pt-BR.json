@@ -224,13 +224,13 @@
       "ownerYou": "Você atende",
       "ownerOther": "Atende: {operator}",
       "ownerHandedOver": "Transferida",
-      "ownerHouse": "Número da casa",
       "filters": "Filtros",
       "ownerFilterHeading": "Quem atende",
       "ownerFilterAll": "Todos os operadores",
       "ownerFilterMine": "Minhas conversas",
-      "ownerFilterHouse": "Número da casa",
-      "ownerFilterUnnamed": "Operador sem nome"
+      "ownerFilterUnnamed": "Operador sem nome",
+      "ownerUnassigned": "Sem responsável",
+      "ownerFilterUnassigned": "Sem responsável"
     },
     "newConversation": {
       "title": "Nova conversa",
@@ -285,12 +285,10 @@
       "ownerLabel": "Quem atende",
       "ownerYou": "Você",
       "ownerHandedOver": "Você transferiu — acompanhando",
-      "ownerHouse": "Número da casa",
       "ownerUnknown": "Não definido",
       "ownerYouHint": "Esta conversa chega no seu número. Só você pode responder.",
       "ownerOtherHint": "Esta conversa chega no número de {operator}. Só {operator} pode responder — você acompanha.",
       "ownerHandedOverHint": "Você passou esta conversa adiante. Se o cliente escrever aqui de novo, ela volta a ser sua.",
-      "ownerHouseHint": "Esta conversa chega no número da casa, que não é de ninguém em particular.",
       "ownerUnknownHint": "Esta conversa não está ligada a nenhum número conectado.",
       "transferShort": "Transferir",
       "endConversation": "Encerrar atendimento",
@@ -307,7 +305,9 @@
       "observingHandedOverGeneric": "Esta conversa foi passada adiante. Você está acompanhando.",
       "startConversationHint": "Envie a primeira mensagem para começar.",
       "ownerHandedOverNeutral": "Transferida — acompanhando",
-      "ownerHandedOverNeutralHint": "Esta conversa foi passada adiante por outra pessoa. Você acompanha, mas quem responde é quem a recebeu."
+      "ownerHandedOverNeutralHint": "Esta conversa foi passada adiante por outra pessoa. Você acompanha, mas quem responde é quem a recebeu.",
+      "ownerUnassigned": "Sem responsável",
+      "ownerUnassignedHint": "Ninguém respondeu ainda. Quem responder primeiro passa a ser o responsável por este atendimento."
     },
     "composer": {
       "draftHint": "Toque no ✨ para rascunhar uma resposta com IA — você pode editar antes de enviar",

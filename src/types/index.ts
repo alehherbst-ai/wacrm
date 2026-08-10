@@ -250,6 +250,18 @@ export interface Conversation {
    */
   handed_over_at?: string | null;
   /**
+   * Who answers for this conversation (migration 049). Stamped by a
+   * trigger on the first agent message, and by a transfer on the
+   * receiving link.
+   *
+   * Distinct from `whatsapp_config_id`, which says which line a reply
+   * physically leaves from. On an account where every operator has
+   * their own number the two agree; on a shared line they do not, and
+   * this is the one that answers "whose conversation is this?".
+   * NULL means nobody has replied yet.
+   */
+  responsible_user_id?: string | null;
+  /**
    * AI auto-reply state for this thread (migration 029 + 033):
    *  - `ai_autoreply_disabled` — the bot is paused here (a human took
    *    over, or the model handed off). Sticky until re-enabled.

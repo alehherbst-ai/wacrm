@@ -156,6 +156,9 @@ export async function POST(request: Request) {
         filename,
         interactivePayload: interactive_payload,
         replyToMessageId: reply_to_message_id,
+        // Stamps `messages.sender_id`, which is what lets the first
+        // reply claim the conversation (migration 049).
+        senderUserId: userId,
       })
 
       return NextResponse.json({
