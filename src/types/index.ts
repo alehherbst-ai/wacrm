@@ -422,6 +422,22 @@ export interface Deal {
   notes?: string;
   expected_close_date?: string;
   status?: DealStatus;
+  /** Where the lead came from (migration 048). NULL when unattributed,
+   *  or when the source row was deleted (ON DELETE SET NULL). */
+  source_id?: string | null;
+  /**
+   * When the deal actually reached `won`/`lost` (migration 048).
+   * Stamped by a trigger on the status transition and cleared on
+   * reopen — unlike `updated_at`, editing a closed deal does not move
+   * it, which is what makes month-over-month revenue stable.
+   */
+  closed_at?: string | null;
+  /**
+   * True once someone typed a value instead of accepting the sum of
+   * the line items. While false, a trigger keeps `value` equal to
+   * SUM(quantity × unit_price) over `deal_products`.
+   */
+  value_is_manual?: boolean;
   created_at: string;
   updated_at?: string;
   contact?: Contact;
@@ -431,6 +447,65 @@ export interface Deal {
    *  told apart at a glance. Absent otherwise. */
   pipeline?: Pick<Pipeline, 'id' | 'name'>;
   assignee?: Profile;
+  /** Hydrated by queries that embed `source:lead_sources(...)`. */
+  source?: Pick<LeadSource, 'id' | 'name' | 'color'>;
+  /** Hydrated by queries that embed `items:deal_products(...)`. */
+  items?: DealProduct[];
+}
+
+// ============================================================
+// Products, lead sources and goals (migration 048)
+// ============================================================
+
+export interface Product {
+  id: string;
+  account_id: string;
+  user_id: string;
+  name: string;
+  description?: string | null;
+  /** Suggested price, copied into a line item on selection. Changing it
+   *  never rewrites line items that already exist. */
+  default_price: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface LeadSource {
+  id: string;
+  account_id: string;
+  user_id: string;
+  name: string;
+  color: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+/** One line of a deal: which product, how many, at what price. */
+export interface DealProduct {
+  id: string;
+  account_id: string;
+  deal_id: string;
+  product_id: string;
+  quantity: number;
+  /** The price actually charged, snapshotted at insert time. */
+  unit_price: number;
+  created_at: string;
+  /** Hydrated by queries that embed `product:products(...)`. */
+  product?: Pick<Product, 'id' | 'name' | 'is_active'>;
+}
+
+export interface SalesGoal {
+  id: string;
+  account_id: string;
+  /** NULL means the account-wide target; otherwise the seller's own. */
+  profile_id: string | null;
+  /** First day of the month the target applies to (YYYY-MM-01). */
+  period_month: string;
+  target_amount: number;
+  created_at: string;
+  updated_at?: string;
 }
 
 // ============================================================

@@ -6,6 +6,73 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-10] Dashboard de vendas no Painel, com produtos por negociação
+
+**Antes:** o Painel só tinha a visão operacional (conversas, tempo de
+resposta, feed de atividade). Não havia como responder "quanto vendemos em
+agosto, de quais produtos, por qual vendedor e vindo de onde": o negócio não
+tinha produtos nem origem, e a data de fechamento não existia — "ganho neste
+mês" era lido de `updated_at`, que mexe toda vez que alguém edita uma nota,
+então um negócio ganho em junho e comentado em agosto contava como venda de
+agosto.
+
+**Depois:** o Painel virou duas abas — "Visão geral" (o que já existia,
+intacto) e "Vendas". A aba nova filtra por mês de referência ou período
+livre, pipeline, vendedor, produto e origem, e mostra: Ganho, Conversão,
+Valor em aberto, Meta, velocímetro de % da meta, donut de vendas por
+produto, ranking de vendedores, e as quebras por origem do lead, por etapa
+aberta e por vendedor aberto. O formulário do negócio ganhou itens
+(produto × quantidade × preço) e o campo de origem.
+
+**Decisões que vale registrar:**
+1. **Receita e "em aberto" respondem perguntas diferentes, e por isso são
+   consultados separadamente.** O que fechou é filtrado por `closed_at`
+   dentro do período; o que está aberto é o estado de agora, sem filtro de
+   data — filtrar "negócios abertos durante agosto" é uma pergunta que
+   ninguém faz, e o número mudaria depois que o mês acabou.
+2. **`deals.closed_at` é nova e carimbada por trigger** na transição para
+   won/lost, limpa ao reabrir. Editar um negócio fechado não move mais a
+   data. O histórico existente foi preenchido a partir de `updated_at`, que
+   é a melhor evidência disponível para o que nunca foi registrado.
+3. **O valor do negócio é a soma dos itens, com escape.** Um trigger mantém
+   `deals.value` igual a `SUM(quantidade × preço)` enquanto
+   `value_is_manual` for falso; ao digitar um valor negociado a flag liga e
+   o trigger para de mexer. O formulário mostra a soma ao lado do valor
+   digitado quando os dois divergem, em vez de esconder a diferença.
+4. **No gráfico por produto, os itens são rateados para bater com a
+   receita.** Um negócio com desconto manual distribui a diferença
+   proporcionalmente entre os itens, e um negócio sem itens cai num balde
+   "Sem produto" — assim a soma do donut é sempre igual ao card de Ganho.
+5. **Produto excluído é bloqueado pelo banco (`ON DELETE RESTRICT`), não
+   pela interface.** Apagar um produto vendido reescreveria o gráfico do
+   trimestre passado; a tela oferece arquivar e traduz a recusa do banco
+   (23503) para "arquive em vez de excluir".
+6. **Origem é tabela, não texto livre**, para "Indicação" e "indicacao" não
+   virarem duas fatias da mesma pizza. `ON DELETE SET NULL`: apagar a
+   origem não apaga os negócios que vieram por ela.
+7. **Meta ausente não é meta zero.** Campo em branco apaga a linha em vez de
+   gravar 0 — zero leria como 100% atingido na primeira venda. O
+   velocímetro some quando não há meta.
+
+**Resolvido:** pedido de um dashboard de vendas no Painel, com filtro por
+pessoas, produtos, origem e datas, e com produtos vinculados a cada
+negociação — nenhuma dessas três entidades existia no sistema.
+
+Arquivos: `supabase/migrations/048_sales_dashboard.sql`,
+`src/lib/dashboard/sales.ts`, `src/lib/dashboard/sales.test.ts`,
+`src/app/(dashboard)/dashboard/page.tsx`,
+`src/components/dashboard/overview.tsx`,
+`src/components/dashboard/sales/sales-dashboard.tsx`,
+`src/components/dashboard/sales/sales-charts.tsx`,
+`src/components/dashboard/sales/sales-filters.tsx`,
+`src/components/pipelines/deal-form.tsx`,
+`src/components/pipelines/deal-products-editor.tsx`,
+`src/components/settings/deals-settings.tsx`,
+`src/components/settings/products-settings.tsx`,
+`src/components/settings/lead-sources-settings.tsx`,
+`src/components/settings/sales-goals-settings.tsx`,
+`src/lib/currency.ts`, `src/types/index.ts`, `messages/*.json`
+
 ## [2026-08-07] A tela de WhatsApp passa a dizer QUAL número está conectado
 
 **Antes:** o card de conexão mostrava "Conectado" e nada mais. Isso bastava

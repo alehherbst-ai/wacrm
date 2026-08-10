@@ -81,6 +81,34 @@ export function formatCurrency(
 }
 
 /**
+ * Currency with cents. {@link formatCurrency} rounds to whole units,
+ * which is right for a pipeline total but wrong for a line item: a
+ * quantity of 3 at 19,90 has to read as 59,70, not 60. Used by the
+ * deal line-item editor and the sales dashboard's revenue figures,
+ * where the number is expected to reconcile against an invoice.
+ */
+export function formatCurrencyExact(
+  value: number,
+  currency: string = DEFAULT_CURRENCY,
+): string {
+  const code = (currency || DEFAULT_CURRENCY).trim();
+  const amount = Number(value) || 0;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: code,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${code} ${new Intl.NumberFormat(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount)}`;
+  }
+}
+
+/**
  * Compact currency for tight spaces (donut center, legend rows):
  * "$1.2M" / "€34.5k" / "₹900". Uses the currency's symbol from
  * CURRENCIES, falling back to the code when we don't carry a symbol.

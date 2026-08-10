@@ -18,9 +18,14 @@ import {
 } from "@/components/ui/card";
 import { useTranslations } from "next-intl";
 import { SettingsPanelHead } from "./settings-panel-head";
+import { ProductsSettings } from "./products-settings";
+import { LeadSourcesSettings } from "./lead-sources-settings";
+import { SalesGoalsSettings } from "./sales-goals-settings";
 
 /**
- * Deals settings — account-wide default currency.
+ * Deals settings — account-wide default currency, plus the three
+ * vocabularies the sales dashboard reports on: the product catalogue,
+ * the lead sources, and the monthly targets (migration 048).
  *
  * One currency per account (issue #218): the chosen code seeds new
  * deals and formats every aggregated total. Existing deals keep their
@@ -70,7 +75,7 @@ export function DealsSettings() {
   }
 
   return (
-    <section className="max-w-2xl animate-in fade-in-50 duration-200">
+    <section className="max-w-2xl space-y-6 animate-in fade-in-50 duration-200">
       <SettingsPanelHead
         title={t("title")}
         description={t("description")}
@@ -125,6 +130,10 @@ export function DealsSettings() {
           )}
         </CardContent>
       </Card>
+
+      <ProductsSettings />
+      <LeadSourcesSettings />
+      <SalesGoalsSettings />
     </section>
   );
 }

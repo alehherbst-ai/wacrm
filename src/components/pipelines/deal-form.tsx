@@ -4,15 +4,24 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { CURRENCIES } from "@/lib/currency";
+import { CURRENCIES, formatCurrencyExact } from "@/lib/currency";
 import type {
   Contact,
   Conversation,
   Deal,
+  DealProduct,
   DealStatus,
+  LeadSource,
   PipelineStage,
+  Product,
   Profile,
 } from "@/types";
+import {
+  DealProductsEditor,
+  draftKey,
+  itemsTotal,
+  type DealItemDraft,
+} from "./deal-products-editor";
 import {
   Sheet,
   SheetContent,
@@ -74,9 +83,16 @@ export function DealForm({
   const [assignedTo, setAssignedTo] = useState("");
   const [expectedCloseDate, setExpectedCloseDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [sourceId, setSourceId] = useState("");
+  const [items, setItems] = useState<DealItemDraft[]>([]);
+  /** Mirrors `deals.value_is_manual`: while false the value shown is the
+   *  sum of the line items and the input stays locked. */
+  const [valueIsManual, setValueIsManual] = useState(false);
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [sources, setSources] = useState<LeadSource[]>([]);
   const [linkedConversation, setLinkedConversation] =
     useState<Conversation | null>(null);
 
@@ -103,6 +119,11 @@ export function DealForm({
       setAssignedTo(deal.assigned_to ?? "");
       setExpectedCloseDate(deal.expected_close_date ?? "");
       setNotes(deal.notes ?? "");
+      setSourceId(deal.source_id ?? "");
+      setValueIsManual(deal.value_is_manual ?? false);
+      // Line items arrive from their own fetch below; clear whatever the
+      // previously-opened deal left behind so the two never mix.
+      setItems([]);
     } else {
       setTitle("");
       setValue("");
@@ -112,6 +133,9 @@ export function DealForm({
       setAssignedTo("");
       setExpectedCloseDate("");
       setNotes("");
+      setSourceId("");
+      setValueIsManual(false);
+      setItems([]);
     }
   }, [open, deal, defaultStageId, defaultContactId, stages, defaultCurrency]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -121,18 +145,53 @@ export function DealForm({
     if (!open) return;
     let cancelled = false;
     (async () => {
-      const [c, p] = await Promise.all([
+      const [c, p, prod, src] = await Promise.all([
         supabase.from("contacts").select("*").order("name"),
         supabase.from("profiles").select("*").order("full_name"),
+        // Archived products come back too: an old deal may still point
+        // at one, and the editor needs its name to render that line.
+        supabase.from("products").select("*").order("name"),
+        supabase
+          .from("lead_sources")
+          .select("*")
+          .order("name"),
       ]);
       if (cancelled) return;
       setContacts((c.data ?? []) as Contact[]);
       setProfiles((p.data ?? []) as Profile[]);
+      setProducts((prod.data ?? []) as Product[]);
+      setSources((src.data ?? []) as LeadSource[]);
     })();
     return () => {
       cancelled = true;
     };
   }, [open, supabase]);
+
+  // Line items for the deal being edited. Separate from the block above
+  // because it depends on which deal is open, not just on the sheet.
+  useEffect(() => {
+    if (!open || !deal) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("deal_products")
+        .select("*")
+        .eq("deal_id", deal.id)
+        .order("created_at");
+      if (cancelled) return;
+      setItems(
+        ((data ?? []) as DealProduct[]).map((row) => ({
+          key: draftKey(),
+          product_id: row.product_id,
+          quantity: String(row.quantity),
+          unit_price: String(row.unit_price),
+        })),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, deal, supabase]);
 
   // Fetch linked conversation for the selected contact (newest open one).
   // Clearing on no-selection is sync with prop state; the populated
@@ -160,6 +219,48 @@ export function DealForm({
     };
   }, [open, contactId, supabase]);
 
+  // Rows the database would actually accept: a product picked and a
+  // positive quantity. Half-filled rows are ignored rather than
+  // blocking the save — an empty row is how "I'm still deciding"
+  // looks, not an error.
+  const validItems = items.filter(
+    (it) => it.product_id && (parseFloat(it.quantity) || 0) > 0,
+  );
+  const computedTotal = itemsTotal(validItems);
+  const valueLocked = validItems.length > 0 && !valueIsManual;
+  const effectiveValue = valueLocked
+    ? computedTotal
+    : parseFloat(value) || 0;
+
+  /**
+   * Replace the deal's line items wholesale rather than diffing them.
+   * The set is small (a handful of rows), the unique index on
+   * (deal_id, product_id) makes a partial update fiddly, and the
+   * value-recompute trigger settles on the same total either way.
+   */
+  async function syncDealProducts(dealId: string): Promise<boolean> {
+    const rows = validItems.map((it) => ({
+      account_id: accountId,
+      deal_id: dealId,
+      product_id: it.product_id,
+      quantity: parseFloat(it.quantity) || 0,
+      unit_price: parseFloat(it.unit_price) || 0,
+    }));
+
+    const { error: delError } = await supabase
+      .from("deal_products")
+      .delete()
+      .eq("deal_id", dealId);
+    if (delError) return false;
+
+    if (rows.length === 0) return true;
+
+    const { error: insError } = await supabase
+      .from("deal_products")
+      .insert(rows);
+    return !insError;
+  }
+
   async function handleSave() {
     if (!title.trim() || !contactId || !stageId) {
       toast.error(t("toastRequired"));
@@ -169,15 +270,26 @@ export function DealForm({
 
     const payload = {
       title: title.trim(),
-      value: parseFloat(value) || 0,
+      // With line items and no manual override, the sum is the value.
+      // The DB trigger arrives at the same number when the items land;
+      // sending it here just keeps the row correct in the window
+      // between the two writes.
+      value: effectiveValue,
       currency,
       contact_id: contactId,
       pipeline_id: pipelineId,
       stage_id: stageId,
       assigned_to: assignedTo || null,
+      source_id: sourceId || null,
       notes: notes.trim() || null,
       expected_close_date: expectedCloseDate || null,
+      // An override only means anything while there are items to
+      // override; without them the flag would just freeze the value
+      // against items added later.
+      value_is_manual: validItems.length > 0 && valueIsManual,
     };
+
+    let dealId = deal?.id ?? null;
 
     if (deal) {
       const { error } = await supabase
@@ -204,14 +316,26 @@ export function DealForm({
         setSaving(false);
         return;
       }
-      const { error } = await supabase
+      const { data: created, error } = await supabase
         .from("deals")
-        .insert({ ...payload, user_id: user.id, account_id: accountId, status: "open" });
-      if (error) {
+        .insert({ ...payload, user_id: user.id, account_id: accountId, status: "open" })
+        .select("id")
+        .single();
+      if (error || !created) {
         toast.error(t("toastFailedCreate"));
         setSaving(false);
         return;
       }
+      dealId = created.id;
+    }
+
+    // The deal itself is saved at this point. A line-item failure is
+    // reported but doesn't roll the deal back — losing the whole edit
+    // over one bad row would be worse than an incomplete item list the
+    // user can fix by reopening.
+    if (dealId) {
+      const ok = await syncDealProducts(dealId);
+      if (!ok) toast.error(t("toastFailedItems"));
     }
 
     setSaving(false);
@@ -304,17 +428,44 @@ export function DealForm({
               )}
             </div>
 
+            <DealProductsEditor
+              items={items}
+              onChange={setItems}
+              products={products}
+              currency={currency}
+            />
+
             <div className="grid grid-cols-[1fr_110px] gap-3">
               <div className="grid gap-2">
-                <Label className="text-muted-foreground">{t("value")}</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-muted-foreground">{t("value")}</Label>
+                  {validItems.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Leaving override mode snaps the field back to
+                        // the sum, so "restore" needs no second control.
+                        if (valueIsManual) setValue(String(computedTotal));
+                        setValueIsManual(!valueIsManual);
+                      }}
+                      className="text-[11px] text-primary hover:underline"
+                    >
+                      {valueIsManual ? t("useItemsTotal") : t("overrideValue")}
+                    </button>
+                  )}
+                </div>
                 <div className="relative">
                   <DollarSign className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     type="number"
-                    value={value}
+                    value={valueLocked ? String(computedTotal) : value}
                     onChange={(e) => setValue(e.target.value)}
+                    readOnly={valueLocked}
+                    aria-readonly={valueLocked}
                     placeholder="0"
-                    className="border-border bg-muted pl-7 text-foreground"
+                    className={`border-border bg-muted pl-7 text-foreground ${
+                      valueLocked ? "cursor-not-allowed opacity-70" : ""
+                    }`}
                   />
                 </div>
               </div>
@@ -332,6 +483,37 @@ export function DealForm({
                   ))}
                 </select>
               </div>
+            </div>
+
+            {/* A typed value that no longer matches the items is a
+                decision, not a bug — but it has to be visible, or the
+                per-product chart quietly stops adding up to revenue. */}
+            {validItems.length > 0 &&
+              valueIsManual &&
+              Math.abs(effectiveValue - computedTotal) > 0.005 && (
+                <p className="-mt-2 text-xs text-amber-500">
+                  {t("valueDiverges", {
+                    total: formatCurrencyExact(computedTotal, currency),
+                  })}
+                </p>
+              )}
+
+            <div className="grid gap-2">
+              <Label className="text-muted-foreground">{t("source")}</Label>
+              <select
+                value={sourceId}
+                onChange={(e) => setSourceId(e.target.value)}
+                className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
+              >
+                <option value="">{t("noSource")}</option>
+                {sources
+                  .filter((s) => s.is_active || s.id === sourceId)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+              </select>
             </div>
 
             <div className="grid gap-2">
