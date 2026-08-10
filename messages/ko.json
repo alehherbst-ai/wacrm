@@ -224,13 +224,13 @@
       "ownerYou": "내 담당",
       "ownerOther": "담당: {operator}",
       "ownerHandedOver": "이관됨",
-      "ownerHouse": "공용 번호",
       "filters": "필터",
       "ownerFilterHeading": "담당",
       "ownerFilterAll": "모든 상담원",
       "ownerFilterMine": "내 대화",
-      "ownerFilterHouse": "공용 번호",
-      "ownerFilterUnnamed": "이름 없는 상담원"
+      "ownerFilterUnnamed": "이름 없는 상담원",
+      "ownerUnassigned": "담당자 없음",
+      "ownerFilterUnassigned": "담당자 없음"
     },
     "newConversation": {
       "title": "새 대화",
@@ -285,12 +285,10 @@
       "ownerLabel": "담당",
       "ownerYou": "나",
       "ownerHandedOver": "내가 이관함 — 지켜보는 중",
-      "ownerHouse": "공용 번호",
       "ownerUnknown": "지정 안 됨",
       "ownerYouHint": "이 대화는 내 번호로 들어옵니다. 나만 답장할 수 있습니다.",
       "ownerOtherHint": "이 대화는 {operator}님의 번호로 들어옵니다. {operator}님만 답장할 수 있고, 나는 지켜봅니다.",
       "ownerHandedOverHint": "이 대화를 넘겼습니다. 고객이 여기로 다시 쓰면 다시 내 대화가 됩니다.",
-      "ownerHouseHint": "이 대화는 특정 담당자가 없는 공용 번호로 들어옵니다.",
       "ownerUnknownHint": "이 대화는 연결된 번호에 연결되어 있지 않습니다.",
       "transferShort": "이관",
       "endConversation": "상담 종료",
@@ -307,7 +305,9 @@
       "observingHandedOverGeneric": "이 대화는 다른 사람에게 넘겨졌습니다. 지켜보는 중입니다.",
       "startConversationHint": "첫 메시지를 보내 시작하세요.",
       "ownerHandedOverNeutral": "이관됨 — 지켜보는 중",
-      "ownerHandedOverNeutralHint": "다른 사람이 이 대화를 넘겼습니다. 지켜볼 수는 있지만 응답은 받은 사람이 합니다."
+      "ownerHandedOverNeutralHint": "다른 사람이 이 대화를 넘겼습니다. 지켜볼 수는 있지만 응답은 받은 사람이 합니다.",
+      "ownerUnassigned": "담당자 없음",
+      "ownerUnassignedHint": "아직 아무도 답장하지 않았습니다. 먼저 응답하는 사람이 이 대화의 담당자가 됩니다."
     },
     "composer": {
       "draftHint": "✨를 눌러 AI로 답장 초안을 작성하세요 — 보내기 전에 수정할 수 있습니다",

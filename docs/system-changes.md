@@ -6,6 +6,80 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-10] Uma linha por contato, e fim do "Número da casa"
+
+**Antes:** dois defeitos ligados pela mesma causa — a responsabilidade era
+deduzida do número, não registrada.
+
+1. **O mesmo contato aparecia duas vezes na lista.** Transferir não move a
+   conversa: cria uma segunda no número de quem recebe e marca a primeira
+   como entregue (migração 045). A lista renderizava uma linha por conversa,
+   então um contato transferido virava duas linhas — e cada uma errada do seu
+   jeito. O elo novo, onde a resposta será escrita, não tinha mensagem
+   nenhuma e mostrava "Nenhuma mensagem ainda"; o elo antigo tinha todo o
+   histórico e nenhuma forma de responder. Histórico e responsabilidade se
+   separaram em duas linhas da mesma lista.
+2. **A linha compartilhada respondia "Número da casa"** quando alguém
+   perguntava de quem era o atendimento — o nome de um telefone como resposta
+   a uma pergunta sobre uma pessoa.
+
+**Depois:** a lista mostra uma linha por corrente de transferência, com a
+identidade do elo vivo e a última mensagem de qualquer elo. `conversations.
+responsible_user_id` passa a registrar quem responde pelo atendimento,
+carimbado por gatilho na primeira mensagem de agente e na transferência. Onde
+não há responsável ainda, a interface diz "Sem responsável" em vez de nomear
+um telefone.
+
+**Decisões que vale registrar:**
+1. **Número e responsável são coisas diferentes, e agora estão separados.** O
+   número diz de onde a resposta SAI — restrição do WhatsApp, não escolha
+   nossa. O responsável diz de quem é o atendimento. Numa conta com um número
+   por operador as duas coincidem; na linha compartilhada divergem, e era
+   exatamente aí que a interface não tinha o que dizer.
+2. **`messages.sender_id` nunca era preenchido.** A coluna existe desde a
+   001 e o insert do caminho de envio simplesmente a omitia, então o CRM não
+   guardava qual colega escreveu cada resposta. O gatilho depende dela; sem
+   corrigir isso ele existiria e nunca dispararia.
+3. **Nada em RLS mudou, de propósito.** Responsabilidade é fluxo de trabalho,
+   não fronteira de acesso. Um operador de escopo 'own' não enxerga a linha
+   compartilhada e portanto nunca responde nela, então não existe o caso de
+   alguém ser responsável por algo que não pode ver — e ampliar visibilidade
+   sem necessidade seria uma mudança de segurança disfarçada de correção de
+   interface.
+4. **O backfill deixa a linha compartilhada em branco.** Conversas num número
+   com operador herdam esse operador. Nas da linha compartilhada não há
+   registro de quem atendeu, e `conversations.user_id` é o admin que salvou a
+   conexão, não quem respondeu — usá-lo colocaria o nome errado justamente na
+   tela cuja função é dizer de quem é a conversa.
+5. **A transferência atribui na hora, sem esperar a primeira mensagem.**
+   Entregar a conversa a alguém já é dizer de quem ela é; esperar deixaria o
+   destinatário sem responsável na janela entre receber e responder, que é
+   quando alguém olha a lista para saber com quem está.
+6. **A IA não reivindica.** O gatilho ignora `sender_type = 'bot'` — deixar
+   uma resposta automática assumir o atendimento faria o cliente ficar "com"
+   um robô. A API pública também não passa remetente: uma integração não é
+   uma pessoa.
+7. **Não-lidas somam ao longo da corrente.** Um cliente que escreveu ao
+   número antigo depois da passagem deixou não-lidas lá; com uma linha só por
+   contato, é o único lugar onde esse número ainda pode aparecer.
+8. **Filtro e etiqueta passam a sair da mesma resolução** (`holderUserId`),
+   para escolher um colega no filtro selecionar exatamente as linhas que
+   mostram o nome dele.
+
+**Resolvido:** relato de que o mesmo contato aparecia duas vezes na caixa de
+entrada, e pedido de acabar com o conceito de "Número da casa" em favor de
+"o responsável é a primeira pessoa que conversou com aquele cliente".
+
+Arquivos: `supabase/migrations/049_conversation_responsible.sql`,
+`src/lib/inbox/collapse-chains.ts`, `src/lib/inbox/collapse-chains.test.ts`,
+`src/lib/inbox/conversation-owner.ts`,
+`src/lib/inbox/conversation-owner.test.ts`,
+`src/components/inbox/conversation-list.tsx`,
+`src/components/inbox/message-thread.tsx`,
+`src/lib/whatsapp/send-message.ts`,
+`src/app/api/whatsapp/send/route.ts`, `src/types/index.ts`,
+`messages/*.json`
+
 ## [2026-08-10] Cartões de indicador coloridos na aba Vendas
 
 **Antes:** os quatro cartões do topo da aba Vendas usavam o `MetricCard`
