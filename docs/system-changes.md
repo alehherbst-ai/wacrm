@@ -6,6 +6,57 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-11] Fechar as funções SECURITY DEFINER expostas a authenticated
+
+**Antes:** no Supabase, toda função nova em `public` nasce com `EXECUTE`
+concedido DIRETAMENTE a `anon` e `authenticated`. Um grant direto não é
+alcançado por `REVOKE ... FROM PUBLIC` — que é exatamente o que quase todas as
+migrations deste repo fizeram (018, 019, 022, 025, 030, 032, 036, 043, 044,
+047, 049…). Só a 007, a 012 e a 050 revogavam do trio correto. Resultado:
+dezenas de funções `SECURITY DEFINER`, que por definição ignoram RLS, ficaram
+chamáveis por qualquer usuário autenticado.
+
+O caso mais sério era `handover_conversation_core` (047): recebe um registro
+`conversations` **composto, montado pelo chamador**, e escreve a partir dele —
+cria e altera conversas, pausa `flow_runs`. Nada nela valida que o registro
+corresponde a uma linha real, porque foi escrita para ser chamada apenas por
+`transfer_conversation` e `pull_conversation`, que validam antes. Exposta
+diretamente, era escrita entre inquilinos.
+
+**Depois:** tudo que é `SECURITY DEFINER` em `public` teve `EXECUTE` revogado
+de `PUBLIC`, `anon` e `authenticated`, exceto uma allowlist explícita.
+
+**Decisões que vale registrar:**
+1. **Allowlist, não lista de alvos.** Enumerar o que fechar deixaria de fora
+   qualquer função não vista, e a próxima função nova nasceria aberta de novo.
+   Invertendo o padrão, o default passa a ser fechado.
+2. **A allowlist saiu de `grep -r "\.rpc("`**, não de julgamento: são as
+   funções que o cliente ou uma rota da API invocam pelo PostgREST. O que as
+   torna seguras de expor é checarem `auth.uid()` internamente, não estarem na
+   lista.
+3. **`peek_invitation` continua aberta a `anon`** — quem abre um link de
+   convite ainda não fez login. `redeem_invitation` ficou junto por precaução:
+   quebrar o fluxo de convite às vésperas do lançamento custa mais que o risco
+   dela, que valida o token por hash.
+4. **Os três helpers de RLS ficaram de fora**, por dois motivos: só respondem
+   sobre o próprio chamador ("eu sou membro desta conta?"), então expostos não
+   vazam nada de terceiros; e são avaliados dentro de policies, onde a
+   interação entre privilégio de EXECUTE e avaliação de política precisa ser
+   verificada num banco antes de mexer — errar ali derruba o RLS inteiro.
+5. **Nada quebra por dentro.** Função de gatilho não exige EXECUTE do chamador
+   (o privilégio é checado na criação do gatilho), e uma `SECURITY DEFINER`
+   roda como o dono, então `transfer_conversation` continua chamando
+   `handover_conversation_core`. `service_role` não é tocado.
+6. **A migration aborta se falhar.** Um bloco final confere se
+   `handover_conversation_core` continua alcançável e levanta exceção se sim —
+   melhor abortar que reportar sucesso sobre uma porta aberta.
+
+**Resolvido:** achado de segurança levantado ao verificar o banco em
+2026-08-11, quando o advisor `authenticated_security_definer_function_executable`
+apontou 29 funções.
+
+Arquivos: `supabase/migrations/052_lock_down_security_definer.sql`
+
 ## [2026-08-11] Um número de WhatsApp por pessoa, e nenhum de ninguém
 
 **Antes:** Configurações › WhatsApp oferecia dois cartões — "Sua linha" e
