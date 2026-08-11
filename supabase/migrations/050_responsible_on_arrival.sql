@@ -117,8 +117,19 @@ $$;
 
 ALTER FUNCTION public.resolve_conversation_responsible(UUID, UUID, UUID)
   OWNER TO postgres;
+-- Os três: revogar só de PUBLIC não basta no Supabase. Toda função nova
+-- em `public` nasce com EXECUTE concedido DIRETAMENTE a `anon` e
+-- `authenticated`, e um grant direto não é alcançado pelo REVOKE em
+-- PUBLIC — a função continuaria chamável pelo cliente. Sendo SECURITY
+-- DEFINER, ela ignora RLS: qualquer autenticado poderia perguntar de
+-- quem é o contato X da conta Y. É o mesmo trio que a 007 e a 012 já
+-- usam.
 REVOKE ALL ON FUNCTION public.resolve_conversation_responsible(UUID, UUID, UUID)
   FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.resolve_conversation_responsible(UUID, UUID, UUID)
+  FROM anon;
+REVOKE ALL ON FUNCTION public.resolve_conversation_responsible(UUID, UUID, UUID)
+  FROM authenticated;
 
 -- Serve o passo 2 do resolvedor.
 CREATE INDEX IF NOT EXISTS idx_conversations_contact_responsible
