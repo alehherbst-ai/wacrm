@@ -6,6 +6,58 @@ anterior, o que foi alterado, e qual problema isso resolveu.
 
 Entradas mais recentes primeiro.
 
+## [2026-08-11] Um número de WhatsApp por pessoa, e nenhum de ninguém
+
+**Antes:** Configurações › WhatsApp oferecia dois cartões — "Sua linha" e
+"Número da casa". O segundo criava uma conexão com `operator_user_id = NULL`,
+e era a causa raiz de tudo que as entradas anteriores tentaram remendar: uma
+conversa que chega numa linha sem operador não tem de quem herdar responsável.
+A regra de atribuição da 050 chegava ao último passo e devolvia NULL, então
+com quatro operadores olhando a caixa ninguém sabia com quem o cliente queria
+falar — porque essa informação não existia em lugar nenhum.
+
+**Depois:** existe um cartão só. Toda conexão nasce com `operator_user_id =
+quem conectou`, o parâmetro `scope` sumiu das três rotas do WhatsApp e do
+helper `connection-target`, e a migração adota as linhas órfãs que já existiam.
+O número em que a mensagem chega passa a ser a resposta para "com quem o
+cliente queria falar", e a regra da 050 nunca precisa passar do primeiro passo.
+
+**Decisões que vale registrar:**
+1. **O `SET NOT NULL` é condicional.** Aplicá-lo com uma linha órfã restante
+   abortaria a migration inteira, e uma migration que falha no meio é pior que
+   uma regra aplicada em duas etapas. O bloco só fecha a regra se sobrar zero
+   órfã, e avisa por `RAISE WARNING` quando não fecha.
+2. **A adoção testa candidatos em ordem, do mais defensável ao menos:** quem
+   criou a conexão (escaneou o QR code), depois o dono da conta, depois
+   qualquer admin, depois qualquer membro — sempre o mais antigo, para o
+   resultado não depender da ordem em que o Postgres devolveu as linhas. Cada
+   candidato só serve se ainda não tiver linha, porque o índice único da 044
+   recusaria a segunda.
+3. **As conversas seguem a linha adotada.** Dar dono ao número e deixar as
+   conversas dele sem dono recriaria exatamente a incoerência que este trabalho
+   veio corrigir. Só as SEM responsável são tocadas: uma conversa já atribuída
+   é um fato, não uma lacuna.
+4. **As rotas caíram para `requireRole('agent')`.** Quem enforça de verdade é a
+   RLS da 044 (`operator_user_id = auth.uid()` para agentes, tudo para admins),
+   então um agente passando o `connection_id` de um colega simplesmente não
+   casa linha nenhuma. Exigir admin na rota seria uma segunda checagem mais
+   fraca que a primeira.
+5. **Quem não envia mensagens perde o cartão inteiro**, não ganha um desativado:
+   um leitor da caixa não tem linha para parear, e um controle que só existe
+   para falhar não ajuda ninguém.
+
+**Resolvido:** pedido de que só exista um número de WhatsApp por usuário,
+qualquer que seja o usuário, e de que o sistema identifique pelo número de
+chegada a quem atribuir o atendimento.
+
+Arquivos: `supabase/migrations/051_one_line_per_operator.sql`,
+`src/lib/whatsapp/connection-target.ts`,
+`src/app/api/whatsapp/uazapi/connect/route.ts`,
+`src/app/api/whatsapp/uazapi/status/route.ts`,
+`src/app/api/whatsapp/uazapi/disconnect/route.ts`,
+`src/components/settings/whatsapp-panel.tsx`,
+`src/components/settings/uazapi-connect.tsx`, `messages/*.json`
+
 ## [2026-08-10] Responsável definido na chegada da mensagem, não na resposta
 
 **Antes:** a [entrada anterior](#2026-08-10-uma-linha-por-contato-e-fim-do-número-da-casa)

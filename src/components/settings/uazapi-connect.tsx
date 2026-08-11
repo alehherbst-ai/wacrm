@@ -24,27 +24,17 @@ interface UazapiConnectionRow {
 
 type ViewState = 'idle' | 'connecting' | 'awaiting_scan' | 'expired' | 'connected';
 
-interface UazapiConnectProps {
-  /**
-   * Which line this card manages.
-   *
-   * `account` is the house number — the connection an account had
-   * before operators existed, and the one automations fall back to.
-   * `mine` is the signed-in operator's own line: messages arriving on
-   * it land in their inbox and nobody else's (migration 044).
-   *
-   * The card is otherwise identical, which is the point — pairing a
-   * phone works the same either way.
-   */
-  scope?: 'account' | 'mine';
-}
-
-export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
+/**
+ * Pairs the signed-in operator's WhatsApp line — the only kind there
+ * is since migration 051. Messages arriving on it land in their inbox
+ * and name them as responsible, which is what the shared "house
+ * number" could never do.
+ */
+export function UazapiConnect() {
   // `Settings.whatsapp`, not `Settings.whatsapp.uazapi` — the latter is
   // where this asked for four months and no such namespace exists, so
   // every label on this card resolved to a missing message.
   const t = useTranslations('Settings.whatsapp');
-  const isMine = scope === 'mine';
   const supabase = createClient();
   const { user, accountId, loading: authLoading, profileLoading } = useAuth();
 
@@ -87,13 +77,11 @@ export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
           .eq('account_id', acctId)
           .eq('provider', 'uazapi');
 
-        query = isMine
-          ? query.eq('operator_user_id', user?.id ?? '')
-          : query.is('operator_user_id', null);
+        query = query.eq('operator_user_id', user?.id ?? '');
 
         // Ordered + limited rather than `.maybeSingle()`, which ERRORS
-        // on more than one row — and an account may now hold one line
-        // per operator (migration 044).
+        // on more than one row — and an account holds one line per
+        // operator (migration 044).
         const { data, error } = await query
           .order('created_at', { ascending: true })
           .limit(1);
@@ -109,7 +97,7 @@ export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
         setLoading(false);
       }
     },
-    [supabase, isMine, user?.id]
+    [supabase, user?.id]
   );
 
   useEffect(() => {
@@ -131,7 +119,7 @@ export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
    */
   const fetchConnectedPhone = useCallback(async () => {
     try {
-      const res = await fetch(`/api/whatsapp/uazapi/status?scope=${scope}`);
+      const res = await fetch('/api/whatsapp/uazapi/status');
       if (!res.ok) {
         setPhoneUnreachable(true);
         return;
@@ -144,7 +132,7 @@ export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
       // what the database knows; it just cannot name the number.
       setPhoneUnreachable(true);
     }
-  }, [scope]);
+  }, []);
 
   useEffect(() => {
     if (viewState !== 'connected') return;
@@ -161,7 +149,7 @@ export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
       }
       try {
         const res = await fetch(
-          `/api/whatsapp/uazapi/status?scope=${scope}`,
+          '/api/whatsapp/uazapi/status',
         );
         if (!res.ok) return;
         const data = await res.json();
@@ -185,7 +173,7 @@ export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
         console.error('[uazapi] status poll failed:', err);
       }
     }, POLL_INTERVAL_MS);
-  }, [accountId, fetchConnection, stopPolling, t, scope]);
+  }, [accountId, fetchConnection, stopPolling, t]);
 
   async function handleConnect() {
     setViewState('connecting');
@@ -193,7 +181,7 @@ export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
       const res = await fetch('/api/whatsapp/uazapi/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope }),
+        body: JSON.stringify({}),
       });
       const data = await res.json();
 
@@ -236,7 +224,7 @@ export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
       const res = await fetch('/api/whatsapp/uazapi/disconnect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope }),
+        body: JSON.stringify({}),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -270,10 +258,10 @@ export function UazapiConnect({ scope = 'account' }: UazapiConnectProps) {
     <Card>
       <CardHeader>
         <CardTitle className="text-foreground">
-          {isMine ? t('mineTitle') : t('title')}
+          {t('mineTitle')}
         </CardTitle>
         <CardDescription className="text-muted-foreground">
-          {isMine ? t('mineDescription') : t('description')}
+          {t('mineDescription')}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
