@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import {
   findTargetConnection,
-  parseConnectionScope,
 } from '@/lib/whatsapp/connection-target';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { disconnectInstance } from '@/lib/whatsapp/uazapi-api';
@@ -19,19 +18,15 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const connectionId = (body as { connection_id?: string })?.connection_id;
-    const scope = parseConnectionScope((body as { scope?: unknown })?.scope);
 
-    // An operator may unpair their own phone; anything else — the house
-    // number, or a colleague's line — stays admin territory. The RLS
-    // policy enforces the same rule, so a forged `scope` buys nothing:
-    // the DELETE simply matches no row.
-    const { supabase, accountId, userId } = await requireRole(
-      scope === 'mine' ? 'agent' : 'admin'
-    );
+    // An operator may unpair their own phone; a colleague's line stays
+    // admin territory. The RLS policy is what enforces that — an agent
+    // passing somebody else's `connection_id` simply matches no row —
+    // so the route only has to require the lower of the two.
+    const { supabase, accountId, userId } = await requireRole('agent');
 
     const config = await findTargetConnection(supabase, accountId, {
       connectionId,
-      scope,
       userId,
     });
     if (!config) {

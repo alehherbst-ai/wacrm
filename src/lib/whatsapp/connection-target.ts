@@ -7,28 +7,21 @@
 // one row, so the moment a second number exists those three routes
 // would start failing with "UAZAPI connection not found" and no clue
 // why. Every one of them now goes through here instead.
+//
+// Since migration 051 there is no shared connection to disambiguate
+// against: every line belongs to exactly one operator, so "which row"
+// means "the caller's", or an explicit id when an admin is acting on
+// somebody else's. The `scope` parameter that used to pick between a
+// personal line and the account's shared one is gone — a request that
+// cannot name an operator has no line to find.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-/**
- * Whose line a request is about.
- *
- * `account` is the house number — the connection with no operator
- * assigned, which is what every account had before operators existed.
- * `mine` is the caller's own line.
- */
-export type ConnectionScope = 'account' | 'mine';
-
-export function parseConnectionScope(value: unknown): ConnectionScope {
-  return value === 'mine' ? 'mine' : 'account';
-}
-
 export interface FindConnectionArgs {
   /** An explicit row id always wins — the caller already knows which. */
   connectionId?: string | null;
-  scope?: ConnectionScope;
-  /** Required when `scope` is 'mine'. */
+  /** Whose line to look for. Without it there is nothing to resolve. */
   userId?: string | null;
 }
 
@@ -47,7 +40,7 @@ export async function findTargetConnection(
   accountId: string,
   args: FindConnectionArgs = {}
 ): Promise<ConfigRow | null> {
-  const { connectionId, scope = 'account', userId } = args;
+  const { connectionId, userId } = args;
 
   let query = db
     .from('whatsapp_config')
@@ -57,20 +50,18 @@ export async function findTargetConnection(
 
   if (connectionId) {
     query = query.eq('id', connectionId);
-  } else if (scope === 'mine') {
+  } else {
     // No userId means no line can belong to the caller. Returning null
     // is right — inventing a fallback here would hand somebody else's
     // number to whoever asked.
     if (!userId) return null;
     query = query.eq('operator_user_id', userId);
-  } else {
-    query = query.is('operator_user_id', null);
   }
 
-  // Ordered + limited rather than `.maybeSingle()`: the partial unique
-  // indexes from 044 already guarantee at most one row for each branch
-  // above, but a duplicate would now degrade into "picks the oldest"
-  // instead of erroring the whole screen.
+  // Ordered + limited rather than `.maybeSingle()`: the unique index
+  // from 044 already guarantees at most one line per operator, but a
+  // duplicate would degrade into "picks the oldest" instead of
+  // erroring the whole screen.
   const { data, error } = await query
     .order('created_at', { ascending: true })
     .limit(1);

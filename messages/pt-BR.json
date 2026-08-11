@@ -1572,7 +1572,8 @@
       "statusError": "Não foi possível verificar o status da conexão.",
       "mineTitle": "Meu número de WhatsApp",
       "mineDescription": "Conecte o seu próprio número escaneando o QR Code pelo celular. As conversas que chegarem nele aparecem só na sua caixa de entrada, e as suas respostas saem por ele.",
-      "numberUnreachable": "Não foi possível confirmar o número com a UAZAPI. A conexão pode ter expirado — use “Verificar / reparar conexão”."
+      "numberUnreachable": "Não foi possível confirmar o número com a UAZAPI. A conexão pode ter expirado — use “Verificar / reparar conexão”.",
+      "viewerOnly": "Você tem acesso de leitura à caixa de entrada, então não há um número para conectar aqui — responder é o que exige uma linha própria."
     },
     "products": {
       "title": "Produtos",
