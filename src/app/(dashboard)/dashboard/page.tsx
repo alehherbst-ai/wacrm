@@ -29,9 +29,17 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{t('title')}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t('description')}</p>
+      <div className="flex items-center gap-3.5">
+        <span
+          className="flex size-11 flex-shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary ring-1 ring-primary/20 ring-inset"
+          aria-hidden
+        >
+          <LayoutDashboard className="size-5" />
+        </span>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">{t('title')}</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{t('description')}</p>
+        </div>
       </div>
 
       <Tabs

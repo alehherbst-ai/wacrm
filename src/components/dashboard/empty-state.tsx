@@ -27,14 +27,17 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex h-full min-h-40 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card/40 px-4 py-6 text-center',
+        // bg-muted/30, not bg-card/40 — against a white card the latter
+        // is white on white, which left the panel looking broken rather
+        // than empty.
+        'flex h-full min-h-40 flex-col items-center justify-center gap-2.5 rounded-xl border border-dashed border-border-strong bg-muted/30 px-4 py-6 text-center',
         className,
       )}
     >
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        <Icon className="h-5 w-5" />
+      <div className="flex size-12 items-center justify-center rounded-full bg-primary-soft text-primary ring-1 ring-primary/15 ring-inset">
+        <Icon className="size-5" />
       </div>
-      <p className="text-sm font-medium text-muted-foreground">{title || defaultTitle}</p>
+      <p className="text-sm font-semibold text-foreground">{title || defaultTitle}</p>
       {hint && <p className="max-w-xs text-xs text-muted-foreground">{hint}</p>}
     </div>
   )

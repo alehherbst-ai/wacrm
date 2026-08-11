@@ -8,6 +8,8 @@ import {
   Briefcase,
   Zap,
   Inbox,
+  Activity,
+  ChevronRight,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 import type { ActivityItem, ActivityKind } from '@/lib/dashboard/types'
@@ -29,11 +31,15 @@ interface KindTheme {
   badge: string
 }
 
+// One hue per kind, and four distinct ones — contact and deal both
+// wore the accent before, which made the two most common rows in the
+// feed indistinguishable at a glance. Tones come from the theme
+// tokens, so they stay readable in light and dark alike.
 const KIND_THEME: Record<ActivityKind, KindTheme> = {
-  message: { icon: MessageSquare, badge: 'bg-blue-500/10 text-blue-400' },
-  contact: { icon: UserPlus, badge: 'bg-primary/10 text-primary' },
-  deal: { icon: Briefcase, badge: 'bg-primary/10 text-primary' },
-  automation: { icon: Zap, badge: 'bg-rose-500/10 text-rose-400' },
+  message: { icon: MessageSquare, badge: 'bg-info-soft text-info ring-info/20' },
+  contact: { icon: UserPlus, badge: 'bg-primary-soft text-primary ring-primary/20' },
+  deal: { icon: Briefcase, badge: 'bg-success-soft text-success ring-success/20' },
+  automation: { icon: Zap, badge: 'bg-warn-soft text-warn ring-warn/20' },
 }
 
 import { useTranslations } from 'next-intl'
@@ -55,14 +61,23 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
     i === 0 || totalLoaded > PAGE_SIZES[i - 1]
 
   return (
-    <section className="rounded-xl border border-border bg-card">
-      <header className="flex items-center justify-between border-b border-border px-5 py-4">
-        <h2 className="text-sm font-semibold text-foreground">{t('title')}</h2>
+    <section className="rounded-xl border border-border-strong bg-card shadow-sm">
+      <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className="flex size-9 flex-shrink-0 items-center justify-center rounded-lg bg-success-soft text-success ring-1 ring-success/20 ring-inset"
+            aria-hidden
+          >
+            <Activity className="size-4" />
+          </span>
+          <h2 className="truncate text-sm font-semibold text-foreground">{t('title')}</h2>
+        </div>
         <Link
           href="/inbox"
-          className="text-xs font-medium text-primary hover:text-primary/80"
+          className="group flex flex-shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:border-primary/40 hover:bg-primary-soft"
         >
           {t('viewAll')}
+          <ChevronRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
         </Link>
       </header>
 
@@ -91,25 +106,39 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
               // (bg-card/40 vanishes against a white card surface in light).
               const stripe = i % 2 === 0 ? 'bg-transparent' : 'bg-muted/40'
               const row = (
-                <div className="flex items-center gap-3 px-5 py-2.5">
+                <div className="group/row flex items-center gap-3 px-5 py-2.5">
                   <span
                     className={cn(
-                      'flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full',
+                      'flex size-8 flex-shrink-0 items-center justify-center rounded-full ring-1 ring-inset transition-transform duration-150 group-hover/row:scale-110',
                       theme.badge,
                     )}
+                    aria-hidden
                   >
-                    <Icon className="h-3.5 w-3.5" />
+                    <Icon className="size-4" />
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground transition-transform duration-150 group-hover/row:translate-x-0.5">
                     {it.text}
                   </span>
-                  <span className="flex-shrink-0 text-xs text-muted-foreground tabular-nums">
+                  <span className="flex-shrink-0 text-xs font-medium text-muted-foreground tabular-nums">
                     {relativeTime(it.at, t)}
                   </span>
                 </div>
               )
               return (
-                <li key={it.id} className={cn(stripe, 'transition-colors hover:bg-muted/40')}>
+                <li
+                  key={it.id}
+                  className={cn(
+                    stripe,
+                    // A left rail that only appears on hover marks the
+                    // row you're on without shifting anything: the
+                    // border is always there, just transparent.
+                    // Scoped to `border-l-*` on purpose — a bare
+                    // `hover:border-primary` also repaints the row's
+                    // `divide-y` top edge, since divide's colour rule
+                    // sits in a zero-specificity :where().
+                    'border-l-2 border-l-transparent transition-colors hover:border-l-primary hover:bg-primary-soft',
+                  )}
+                >
                   {it.href ? (
                     <Link href={it.href} className="block">
                       {row}
@@ -121,32 +150,35 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
               )
             })}
           </ul>
-          <footer className="flex items-center justify-between border-t border-border px-5 py-3 text-xs">
-            <span className="text-muted-foreground tabular-nums">
+          <footer className="flex items-center justify-between gap-3 border-t border-border bg-muted/30 px-5 py-3 text-xs">
+            <span className="font-medium text-muted-foreground tabular-nums">
               {t('showingOf', { visible: visible.length, totalLoaded, plus: totalLoaded === 50 ? '+' : '' })}
             </span>
             <div className="flex items-center gap-1">
               <span className="mr-1 text-muted-foreground">{t('show')}</span>
-              {PAGE_SIZES.map((size, i) => {
-                const disabled = !isSizeUseful(size, i)
-                return (
-                  <button
-                    key={size}
-                    type="button"
-                    onClick={() => setPageSize(size)}
-                    disabled={disabled}
-                    className={cn(
-                      'rounded-md px-2 py-1 font-medium tabular-nums transition-colors',
-                      pageSize === size
-                        ? 'bg-secondary text-secondary-foreground'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                      disabled && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground',
-                    )}
-                  >
-                    {size}
-                  </button>
-                )
-              })}
+              <div className="flex items-center gap-1 rounded-lg border border-border bg-card/60 p-1">
+                {PAGE_SIZES.map((size, i) => {
+                  const disabled = !isSizeUseful(size, i)
+                  return (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => setPageSize(size)}
+                      disabled={disabled}
+                      className={cn(
+                        'rounded-md px-2 py-1 font-medium tabular-nums transition-all duration-150',
+                        pageSize === size
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                        disabled &&
+                          'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground',
+                      )}
+                    >
+                      {size}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </footer>
         </>

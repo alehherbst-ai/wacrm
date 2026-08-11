@@ -48,6 +48,25 @@
   --color-primary-hover: var(--primary-hover);
   --color-primary-soft: var(--primary-soft);
   --color-primary-soft-2: var(--primary-soft-2);
+  /* Status tones. The accent (--primary) rotates with the chosen
+   * theme, so it can't carry meaning — "up is good, down is bad" has
+   * to survive someone picking the rose accent. These four hues stay
+   * fixed across accents and are defined per-MODE, because a green
+   * that reads on a near-black card is invisible on a white one.
+   * Each has a `-soft` alpha companion for chip/badge fills.
+   * Exposed as: text-success, bg-success-soft, border-danger/20, … */
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  /* A border one step more present than --border, for surfaces that
+   * need to read as a distinct card rather than dissolve into the
+   * page. --border stays the default for dividers inside a card. */
+  --color-border-strong: var(--border-strong);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -103,7 +122,18 @@ html[data-mode="dark"] {
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.28 0.01 260);
+  --border-strong: oklch(0.345 0.012 260);
   --input: oklch(0.28 0.01 260);
+  /* Light, saturated tones — they sit on a near-black card, so
+   * lightness runs high and the soft fills can afford more alpha. */
+  --success: oklch(0.78 0.15 162);
+  --success-soft: oklch(0.78 0.15 162 / 0.15);
+  --danger: oklch(0.72 0.17 22);
+  --danger-soft: oklch(0.72 0.17 22 / 0.15);
+  --info: oklch(0.74 0.14 250);
+  --info-soft: oklch(0.74 0.14 250 / 0.15);
+  --warn: oklch(0.82 0.14 75);
+  --warn-soft: oklch(0.82 0.14 75 / 0.15);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
@@ -132,7 +162,18 @@ html[data-mode="light"] {
   --accent-foreground: oklch(0.25 0.01 260);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0.004 260);
+  --border-strong: oklch(0.865 0.006 260);
   --input: oklch(0.922 0.004 260);
+  /* Dark, saturated tones — these carry small text on a white card,
+   * so lightness runs low enough to clear 4.5:1 against --card. */
+  --success: oklch(0.52 0.13 162);
+  --success-soft: oklch(0.52 0.13 162 / 0.1);
+  --danger: oklch(0.55 0.2 25);
+  --danger-soft: oklch(0.55 0.2 25 / 0.1);
+  --info: oklch(0.52 0.18 255);
+  --info-soft: oklch(0.52 0.18 255 / 0.1);
+  --warn: oklch(0.55 0.13 68);
+  --warn-soft: oklch(0.55 0.13 68 / 0.12);
   --chart-2: oklch(0.6 0.1 260);
   --chart-3: oklch(0.7 0.06 260);
   --chart-4: oklch(0.8 0.04 260);

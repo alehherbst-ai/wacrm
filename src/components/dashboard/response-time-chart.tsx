@@ -47,33 +47,43 @@ export function ResponseTimeChart({
     })) ?? []
 
   return (
-    <section className="rounded-xl border border-border bg-card">
+    <section className="rounded-xl border border-border-strong bg-card shadow-sm">
       <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">
-            {t('title')}
-          </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {t('description')}
-          </p>
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className="flex size-9 flex-shrink-0 items-center justify-center rounded-lg bg-warn-soft text-warn ring-1 ring-warn/20 ring-inset"
+            aria-hidden
+          >
+            <Clock className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-semibold text-foreground">
+              {t('title')}
+            </h2>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {t('description')}
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-3 text-right text-xs">
+        <div className="flex flex-shrink-0 items-center gap-3 text-right text-xs">
           {thresholdMinutes > 0 && (
-            <span className="rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 font-medium text-rose-300 tabular-nums">
+            // Fixed danger tone, not the accent — a reply-time target
+            // means the same thing whichever colour the account picked.
+            <span className="rounded-full border border-danger/30 bg-danger-soft px-2.5 py-1 font-semibold text-danger tabular-nums">
               {t('target', { minutes: thresholdMinutes })}
             </span>
           )}
           {data && (data.thisWeekAvg != null || data.lastWeekAvg != null) && (
-            <div>
+            <div className="rounded-lg border border-border bg-muted/40 px-3 py-1.5">
               <div className="text-muted-foreground">
                 {t('thisWeek')}{' '}
-                <span className="font-medium text-foreground tabular-nums">
+                <span className="font-semibold text-foreground tabular-nums">
                   {fmt(data.thisWeekAvg)}
                 </span>
               </div>
               <div className="text-muted-foreground">
                 {t('lastWeek')}{' '}
-                <span className="tabular-nums">{fmt(data.lastWeekAvg)}</span>
+                <span className="font-medium tabular-nums">{fmt(data.lastWeekAvg)}</span>
               </div>
             </div>
           )}

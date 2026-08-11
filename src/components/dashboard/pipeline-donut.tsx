@@ -18,12 +18,20 @@ import { useTranslations } from 'next-intl'
 export function PipelineDonut({ data, loading, currency }: PipelineDonutProps) {
   const t = useTranslations('Dashboard.pipelineDonut')
   return (
-    <section className="flex h-full flex-col rounded-xl border border-border bg-card">
-      <header className="border-b border-border px-5 py-4">
-        <h2 className="text-sm font-semibold text-foreground">{t('title')}</h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {t('description')}
-        </p>
+    <section className="flex h-full flex-col rounded-xl border border-border-strong bg-card shadow-sm">
+      <header className="flex items-center gap-3 border-b border-border px-5 py-4">
+        <span
+          className="flex size-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary ring-1 ring-primary/20 ring-inset"
+          aria-hidden
+        >
+          <GitBranch className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-semibold text-foreground">{t('title')}</h2>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {t('description')}
+          </p>
+        </div>
       </header>
 
       <div className="flex flex-1 flex-col p-5">
@@ -38,19 +46,25 @@ export function PipelineDonut({ data, loading, currency }: PipelineDonutProps) {
         ) : (
           <>
             <Donut data={data} currency={currency} />
-            <ul className="mt-5 space-y-2">
+            {/* Rows carry their own surface and a colour bar rather than
+                a loose dot: on a white card, a legend of muted text
+                against nothing was the flattest block on the page. */}
+            <ul className="mt-5 space-y-1.5">
               {data.stages.map((s) => (
-                <li key={s.id} className="flex items-center gap-3 text-xs">
+                <li
+                  key={s.id}
+                  className="flex items-center gap-3 rounded-lg border border-transparent bg-muted/40 px-2.5 py-2 text-xs transition-colors hover:border-border hover:bg-muted"
+                >
                   <span
-                    className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                    className="h-6 w-1 flex-shrink-0 rounded-full"
                     style={{ background: s.color }}
                     aria-hidden
                   />
-                  <span className="flex-1 truncate text-muted-foreground">{s.name}</span>
+                  <span className="flex-1 truncate font-medium text-foreground">{s.name}</span>
                   <span className="text-muted-foreground tabular-nums">
                     {t('dealCount', { count: s.dealCount })}
                   </span>
-                  <span className="w-20 text-right text-muted-foreground tabular-nums">
+                  <span className="w-20 text-right font-semibold text-foreground tabular-nums">
                     {formatCurrencyShort(s.totalValue, currency)}
                   </span>
                 </li>
@@ -92,17 +106,30 @@ function Donut({ data, currency }: { data: PipelineDonutData; currency: string }
   // "Cannot reassign variable after render completes" rule.
   const offsets: number[] = [0]
   for (let i = 0; i < shares.length; i++) offsets.push(offsets[i] + shares[i])
+
+  // Separate the segments with a hairline gap so adjacent stages read
+  // as distinct even when their colours are neighbours on the wheel.
+  // The half-gap is clamped against the segment's own width, so a
+  // sliver shrinks instead of inverting into a backwards arc.
+  const GAP = data.stages.length > 1 ? 0.07 : 0
   const segments = data.stages.map((s, i) => {
     const start = offsets[i] * Math.PI * 2 - Math.PI / 2
     const end = offsets[i + 1] * Math.PI * 2 - Math.PI / 2
-    return { path: arcPath(cx, cy, r, start, end), color: s.color, id: s.id }
+    const half = Math.min(GAP / 2, Math.max(0, (end - start - 0.02) / 2))
+    return {
+      path: arcPath(cx, cy, r, start + half, end - half),
+      color: s.color,
+      id: s.id,
+    }
   })
 
   return (
     <div className="flex items-center justify-center">
       <svg viewBox={`0 0 ${size} ${size}`} className="h-48 w-48" role="img" aria-label={t('ariaLabel')}>
-        {/* background ring */}
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--muted)" strokeWidth={ringWidth} />
+        {/* Track. --border rather than --muted: on a white card the
+            muted token is all but invisible, and the ring is what
+            tells you the donut is a whole with parts. */}
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border)" strokeWidth={ringWidth} />
         {segments.map((seg) => (
           <path
             key={seg.id}
@@ -116,9 +143,9 @@ function Donut({ data, currency }: { data: PipelineDonutData; currency: string }
         {/* center label */}
         <text
           x={cx}
-          y={cy - 6}
+          y={cy - 8}
           textAnchor="middle"
-          className="fill-muted-foreground text-[11px]"
+          className="fill-muted-foreground text-[10px] font-medium tracking-wide uppercase"
         >
           {t('total')}
         </text>
@@ -126,7 +153,7 @@ function Donut({ data, currency }: { data: PipelineDonutData; currency: string }
           x={cx}
           y={cy + 14}
           textAnchor="middle"
-          className="fill-foreground text-[18px] font-semibold tabular-nums"
+          className="fill-foreground text-[20px] font-bold tabular-nums"
         >
           {formatCurrencyShort(data.totalValue, currency)}
         </text>

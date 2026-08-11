@@ -13,13 +13,19 @@ export function SkeletonCard({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'rounded-xl border border-border bg-card p-5',
+        // Matches MetricCard's chrome (strong border, shadow, top rail)
+        // so the row doesn't visibly re-flow when the data lands.
+        'relative overflow-hidden rounded-xl border border-border-strong bg-card p-5 shadow-sm',
         className,
       )}
     >
-      <Skeleton className="h-4 w-32" />
+      <span className="absolute inset-x-0 top-0 h-[3px] bg-muted" aria-hidden />
+      <div className="flex items-start justify-between">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="size-9 rounded-lg" />
+      </div>
       <Skeleton className="mt-4 h-8 w-20" />
-      <Skeleton className="mt-2 h-3 w-16" />
+      <Skeleton className="mt-3 h-4 w-24" />
     </div>
   )
 }

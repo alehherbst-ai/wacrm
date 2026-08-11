@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { formatCurrency } from '@/lib/currency'
+import { cn } from '@/lib/utils'
 import {
   MessageSquare,
   UserPlus,
@@ -127,7 +128,19 @@ export function DashboardOverview() {
   )
 
   return (
-    <div className="space-y-5">
+    // A short stagger down the page: each band fades in a beat after
+    // the one above it, so the panel assembles instead of snapping in.
+    // Purely presentational — nothing here gates on the animation.
+    <div
+      className={cn(
+        'space-y-5',
+        '[&>*]:animate-in [&>*]:fade-in-50 [&>*]:slide-in-from-bottom-2 [&>*]:duration-300 [&>*]:fill-mode-backwards',
+        // fill-mode-backwards is what makes the delay a wait rather
+        // than a flash: without it each band paints in full, then
+        // jumps back to the start of its animation.
+        '[&>*:nth-child(2)]:delay-75 [&>*:nth-child(3)]:delay-150 [&>*:nth-child(4)]:delay-200 [&>*:nth-child(5)]:delay-300',
+      )}
+    >
       {/* Metric cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {metricsLoading || !metrics ? (
@@ -138,6 +151,7 @@ export function DashboardOverview() {
               title={t('activeConversations')}
               value={metrics.activeConversations.current.toLocaleString()}
               icon={MessageSquare}
+              tone="info"
               delta={{
                 sign: metrics.activeConversations.previous,
                 label: deltaLabel(
@@ -151,6 +165,7 @@ export function DashboardOverview() {
               title={t('newContactsToday')}
               value={metrics.newContactsToday.current.toLocaleString()}
               icon={UserPlus}
+              tone="primary"
               delta={{
                 sign:
                   metrics.newContactsToday.current - metrics.newContactsToday.previous,
@@ -165,12 +180,14 @@ export function DashboardOverview() {
               title={t('openDealsValue')}
               value={formatCurrency(metrics.openDealsValue, defaultCurrency)}
               icon={DollarSign}
+              tone="success"
               subtitle={t('openDeals', { count: metrics.openDealsCount })}
             />
             <MetricCard
               title={t('messagesSentToday')}
               value={metrics.messagesSentToday.current.toLocaleString()}
               icon={Send}
+              tone="warn"
               delta={{
                 sign:
                   metrics.messagesSentToday.current - metrics.messagesSentToday.previous,

@@ -1,13 +1,22 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MessageSquare } from 'lucide-react'
+import { MessageSquare, TrendingUp } from 'lucide-react'
 import type { ConversationsSeriesPoint } from '@/lib/dashboard/types'
 import { EmptyState } from './empty-state'
 import { Skeleton } from './skeleton'
 import { cn } from '@/lib/utils'
 
 type RangeDays = 7 | 30 | 90
+
+/**
+ * Series colours. Pulled from the theme rather than hard-coded hex so
+ * the chart follows the accent the account picked — "outgoing" is us,
+ * so it wears the brand colour; "incoming" is the customer, and stays
+ * on the fixed info blue.
+ */
+const C_IN = 'var(--info)'
+const C_OUT = 'var(--primary)'
 
 interface ConversationsChartProps {
   /** Per-range data, so switching tabs never re-fetches. */
@@ -49,23 +58,31 @@ export function ConversationsChart({ series, loading, range, onRangeChange }: Co
   }, [data])
 
   return (
-    <section className="flex h-full flex-col rounded-xl border border-border bg-card">
-      <header className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">{t('title')}</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">{t('description')}</p>
+    <section className="flex h-full flex-col rounded-xl border border-border-strong bg-card shadow-sm">
+      <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className="flex size-9 flex-shrink-0 items-center justify-center rounded-lg bg-info-soft text-info ring-1 ring-info/20 ring-inset"
+            aria-hidden
+          >
+            <TrendingUp className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-semibold text-foreground">{t('title')}</h2>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">{t('description')}</p>
+          </div>
         </div>
-        <div className="flex items-center gap-1 rounded-lg bg-muted/60 p-1">
+        <div className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-border bg-muted/60 p-1">
           {[7, 30, 90].map((r) => (
             <button
               key={r}
               type="button"
               onClick={() => onRangeChange(r as RangeDays)}
               className={cn(
-                'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                'rounded-md px-2.5 py-1 text-xs font-medium transition-all duration-150',
                 range === r
-                  ? 'bg-secondary text-secondary-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
+                  ? 'bg-card text-foreground shadow-sm ring-1 ring-border-strong'
+                  : 'text-muted-foreground hover:bg-card/60 hover:text-foreground',
               )}
             >
               {t('days', { count: r })}
@@ -88,9 +105,9 @@ export function ConversationsChart({ series, loading, range, onRangeChange }: Co
         )}
       </div>
 
-      <footer className="flex items-center gap-4 border-t border-border px-5 py-3 text-xs text-muted-foreground">
-        <LegendDot color="#3b82f6" label={t('incoming')} />
-        <LegendDot color="#7c3aed" label={t('outgoing')} />
+      <footer className="mt-auto flex items-center gap-2 border-t border-border bg-muted/30 px-5 py-3 text-xs">
+        <LegendDot color={C_IN} label={t('incoming')} />
+        <LegendDot color={C_OUT} label={t('outgoing')} />
       </footer>
     </section>
   )
@@ -133,6 +150,15 @@ function LineSvg({
 
   const incomingPath = data.map((p, i) => `${i === 0 ? 'M' : 'L'}${xFor(i)},${yFor(p.incoming)}`).join(' ')
   const outgoingPath = data.map((p, i) => `${i === 0 ? 'M' : 'L'}${xFor(i)},${yFor(p.outgoing)}`).join(' ')
+
+  // Same trace, dropped to the baseline and closed, so it can be
+  // filled with a fading gradient. Two bare strokes on a white card
+  // read as a wireframe; the wash under them is what makes the
+  // series legible at a glance and gives the panel some weight.
+  const baseY = PADDING.top + chartH
+  const closeToBase = ` L${xFor(data.length - 1)},${baseY} L${xFor(0)},${baseY} Z`
+  const incomingArea = incomingPath + closeToBase
+  const outgoingArea = outgoingPath + closeToBase
 
   // Mouse-move: use the SVG's current screen-CTM to map clientX
   // back to viewBox coordinates. The previous rect-based math
@@ -202,6 +228,20 @@ function LineSvg({
         role="img"
         aria-label={t('ariaLabel')}
       >
+        <defs>
+          {/* Vertical fade from the trace down to the axis. Stops use
+              the same theme colour as the stroke, so both follow the
+              accent without a second source of truth. */}
+          <linearGradient id="wa-area-in" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={C_IN} stopOpacity={0.28} />
+            <stop offset="100%" stopColor={C_IN} stopOpacity={0} />
+          </linearGradient>
+          <linearGradient id="wa-area-out" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={C_OUT} stopOpacity={0.28} />
+            <stop offset="100%" stopColor={C_OUT} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+
         {/* Y-axis gridlines + labels */}
         {ticks.map((t) => {
           const y = yFor(t)
@@ -243,24 +283,50 @@ function LineSvg({
           ) : null,
         )}
 
-        {/* Outgoing polyline (violet) */}
+        {/* Area washes first, so both strokes sit on top of both fills
+            and neither line is dimmed by the other's gradient. */}
+        <path d={outgoingArea} fill="url(#wa-area-out)" stroke="none" />
+        <path d={incomingArea} fill="url(#wa-area-in)" stroke="none" />
+
+        {/* Outgoing polyline (accent) */}
         <path
           d={outgoingPath}
           fill="none"
-          stroke="#7c3aed"
-          strokeWidth={2}
+          stroke={C_OUT}
+          strokeWidth={2.5}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {/* Incoming polyline (blue) */}
+        {/* Incoming polyline (info blue) */}
         <path
           d={incomingPath}
           fill="none"
-          stroke="#3b82f6"
-          strokeWidth={2}
+          stroke={C_IN}
+          strokeWidth={2.5}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
+
+        {/* Leading-edge markers. The halo is the card colour, so the
+            dot reads as sitting on the surface even where the two
+            series cross. */}
+        {data.length > 0 &&
+          (
+            [
+              { v: data[data.length - 1].outgoing, c: C_OUT },
+              { v: data[data.length - 1].incoming, c: C_IN },
+            ] as const
+          ).map(({ v, c }) => (
+            <circle
+              key={c}
+              cx={xFor(data.length - 1)}
+              cy={yFor(v)}
+              r={3.5}
+              fill={c}
+              stroke="var(--card)"
+              strokeWidth={2}
+            />
+          ))}
 
         {/* Hover crosshair */}
         {hover !== null && (
@@ -273,8 +339,22 @@ function LineSvg({
               stroke="var(--muted-foreground)"
               strokeDasharray="3 3"
             />
-            <circle cx={hoverX} cy={yFor(data[hover.idx].incoming)} r={3.5} fill="#3b82f6" />
-            <circle cx={hoverX} cy={yFor(data[hover.idx].outgoing)} r={3.5} fill="#7c3aed" />
+            <circle
+              cx={hoverX}
+              cy={yFor(data[hover.idx].incoming)}
+              r={4.5}
+              fill={C_IN}
+              stroke="var(--card)"
+              strokeWidth={2}
+            />
+            <circle
+              cx={hoverX}
+              cy={yFor(data[hover.idx].outgoing)}
+              r={4.5}
+              fill={C_OUT}
+              stroke="var(--card)"
+              strokeWidth={2}
+            />
           </g>
         )}
       </svg>
@@ -285,17 +365,17 @@ function LineSvg({
           letterboxed viewBox percentage. */}
       {hovered && hover !== null && (
         <div
-          className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] shadow-lg"
+          className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 rounded-lg border border-border-strong bg-popover px-3 py-2 text-[11px] shadow-lg"
           style={{ left: `${hover.tooltipLeftPx}px` }}
         >
-          <div className="font-medium text-popover-foreground">{longDayLabel(hovered.day)}</div>
-          <div className="mt-1 flex flex-col gap-0.5">
-            <span className="flex items-center gap-1.5 text-blue-300">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />
+          <div className="font-semibold text-popover-foreground">{longDayLabel(hovered.day)}</div>
+          <div className="mt-1.5 flex flex-col gap-1">
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="inline-block size-2 rounded-full bg-info" aria-hidden />
               {t('tooltipIncoming', { count: hovered.incoming })}
             </span>
-            <span className="flex items-center gap-1.5 text-primary">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" />
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="inline-block size-2 rounded-full bg-primary" aria-hidden />
               {t('tooltipOutgoing', { count: hovered.outgoing })}
             </span>
           </div>
@@ -307,8 +387,12 @@ function LineSvg({
 
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
-    <span className="flex items-center gap-1.5">
-      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+    <span className="flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 font-medium text-foreground">
+      <span
+        className="inline-block size-2 rounded-full"
+        style={{ background: color }}
+        aria-hidden
+      />
       {label}
     </span>
   )
